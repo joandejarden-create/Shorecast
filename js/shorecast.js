@@ -675,6 +675,39 @@ function init() {
     };
   }
 
+  function noaaTideDateTimeParts(tStr) {
+    const m = String(tStr).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+    if (!m) return { dateStr: String(tStr), timeStr: "" };
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][mo - 1];
+    return { dateStr: `${mon} ${d}`, timeStr: formatNoaaShortTime(tStr) };
+  }
+
+  function tideExtremaNoteHtml(rows, extraAfter) {
+    const blocks = rows
+      .map((r) => {
+        const typ = r.type === "H" ? "High" : r.type === "L" ? "Low" : "Tide";
+        const cls = r.type === "H" ? "hi" : r.type === "L" ? "lo" : "";
+        const ft = Number.parseFloat(r.v);
+        const ht = Number.isFinite(ft) ? `${ft.toFixed(1)} ft` : escapeHtml(String(r.v));
+        const { dateStr, timeStr } = noaaTideDateTimeParts(r.t);
+        return `<div class="tide-ext-row" role="listitem">
+            <div class="tide-ext-top">
+              <span class="tide-ext-type ${cls}">${escapeHtml(typ)}</span>
+              <span class="tide-ext-height">${ht}</span>
+            </div>
+            <div class="tide-ext-sub">${escapeHtml(dateStr)} · ${escapeHtml(timeStr)}</div>
+          </div>`;
+      })
+      .join("");
+    const more =
+      extraAfter > 0
+        ? `<p class="tide-ext-more">${escapeHtml(`+${extraAfter} more this day`)}</p>`
+        : "";
+    return `<div class="tide-ext-list" role="list">${blocks}</div>${more}`;
+  }
+
   function tideRefFactor() {
     const id = "tide-noaa";
     const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
@@ -712,20 +745,15 @@ function init() {
         why: "Heights are MLLW feet at the linked gauge, station local clock (lst_ldt). Extrema are listed only when NOAA’s begin_date + 168 h window covers that day—open the full NOAA page for a longer horizon.",
       };
     }
-    const max = 5;
-    const bits = onDay.slice(0, max).map((r) => {
-      const typ = r.type === "H" ? "High" : r.type === "L" ? "Low" : "Tide";
-      const ft = Number.parseFloat(r.v);
-      const h = Number.isFinite(ft) ? `${ft.toFixed(1)} ft` : String(r.v);
-      return `${typ} ${h} @ ${formatNoaaClock(r.t)}`;
-    });
-    const extra = onDay.length > max ? ` (+${onDay.length - max} more this day)` : "";
+    const max = 6;
+    const shown = onDay.slice(0, max);
+    const extraAfter = onDay.length - shown.length;
     return {
       id,
       referenceOnly: true,
       name: "Tide Forecast (NOAA)",
       valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
-      note: bits.join(" · ") + extra,
+      noteHtml: tideExtremaNoteHtml(shown, extraAfter),
       why: "Official NOAA CO-OPS high/low predictions (not part of the blended score). A short tide line also appears on each day in 7-Day Outlook; this card expands the same day with full wording and the station link. Confirm against your chart for the exact entry.",
     };
   }
@@ -741,10 +769,14 @@ function init() {
       ? '<div class="weight">Not included in the blended score above</div>'
       : `<div class="weight">Weight in score: ${f.weightPct}%</div>`;
     const whyBtn = f.referenceOnly ? "More about this" : "Why this score?";
+    const noteInner =
+      typeof f.noteHtml === "string" && f.noteHtml.length > 0 ? f.noteHtml : escapeHtml(f.note ?? "");
+    const noteClass =
+      typeof f.noteHtml === "string" && f.noteHtml.length > 0 ? "note note--tide-ext" : "note";
     return `<div class="factor${f.referenceOnly ? " factor--ref" : ""}">
           <div class="factor-head"><span class="name">${escapeHtml(f.name)}</span><span class="meta">${meta}</span></div>
           ${bar}
-          <div class="note">${escapeHtml(f.note)}</div>
+          <div class="${noteClass}">${noteInner}</div>
           ${weight}
           <button type="button" class="factor-why-btn" aria-expanded="false" aria-controls="${panelId}">${whyBtn}</button>
           <div class="factor-why-panel" id="${panelId}" hidden>${escapeHtml(f.why)}</div>
