@@ -216,6 +216,67 @@ body {
   margin: 0.15rem 0 0.35rem;
 }
 
+.factor .note.note--tide-ext {
+  color: var(--text);
+}
+
+.tide-ext-list {
+  margin: 0;
+  padding: 0;
+}
+
+.tide-ext-row {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.tide-ext-row:last-child {
+  border-bottom: none;
+}
+
+.tide-ext-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
+}
+
+.tide-ext-type {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  min-width: 2.75rem;
+}
+
+.tide-ext-type.hi {
+  color: #0d4f8c;
+}
+
+.tide-ext-type.lo {
+  color: #0d8a5b;
+}
+
+.tide-ext-height {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tide-ext-sub {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tide-ext-more {
+  margin: 0.4rem 0 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 .data-fresh {
   margin: 0 0 0.5rem;
   font-size: 0.72rem;
