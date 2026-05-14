@@ -1,4 +1,4 @@
-# After first push: Repo → Settings → Pages → Source: GitHub Actions
+# Repo → Settings → Pages → Build and deployment → Source: GitHub Actions
 name: Deploy to GitHub Pages
 
 on:
@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: pages-shorecast
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -24,12 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build static bundle
+      - name: Assemble site
         run: |
           mkdir -p _site/css _site/js
           cp index.html _site/
           cp css/shorecast.css _site/css/
           cp js/shorecast.js _site/js/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
