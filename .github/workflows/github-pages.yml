@@ -1,4 +1,9 @@
-# Repo → Settings → Pages → Build and deployment → Source: GitHub Actions
+# Publishes the built site to branch `gh-pages`.
+# Then: Repo → Settings → Pages → Build and deployment → Deploy from a branch
+#       Branch: gh-pages  Folder: / (root)
+#
+# If the workflow fails: Settings → Actions → General → Workflow permissions
+# → choose "Read and write permissions" (needed to push gh-pages).
 name: Deploy to GitHub Pages
 
 on:
@@ -7,20 +12,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages-shorecast
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,12 +31,9 @@ jobs:
           cp css/shorecast.css _site/css/
           cp js/shorecast.js _site/js/
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
+      - name: Push to gh-pages branch
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: _site
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          folder: _site
+          branch: gh-pages
+          clean: true
