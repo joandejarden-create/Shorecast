@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Shorecast — shore diving conditions</title>
-  <link rel="stylesheet" href="css/shorecast.css?v=3" />
+  <link rel="stylesheet" href="css/shorecast.css?v=4" />
 </head>
 <body>
   <div id="shorecast-root" class="app">
@@ -101,7 +101,7 @@
       <section aria-labelledby="breakdown-h">
         <div class="section-head">
           <h3 id="breakdown-h">Conditions Breakdown</h3>
-          <p class="hint">Model factors are weighted for the score. Waves &amp; Swell (Windy) and Tide Forecast (NOAA) cards at the bottom are reference-only for the selected day.</p>
+          <p class="hint">Model factors are weighted for the score. Wind &amp; Gusts and Tide Forecast (NOAA) cards at the bottom are reference-only for the selected day.</p>
         </div>
         <div class="breakdown-list" id="breakdown"></div>
       </section>
@@ -138,7 +138,6 @@
         <p class="data-fresh" id="data-fresh"></p>
         Marine and weather via <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
         Tide highs/lows via <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA CO-OPS</a>.
-        Wave conditions reference via <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy</a> (link in breakdown).
         Forecasts are guidance only — always check local conditions and dive within your training.
       </footer>
     </main>
@@ -153,6 +152,6 @@
     </button>
   </nav>
 
-  <script src="js/shorecast.js?v=3" defer></script>
+  <script src="js/shorecast.js?v=4" defer></script>
 </body>
 </html>
