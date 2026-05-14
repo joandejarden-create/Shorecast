@@ -556,7 +556,7 @@ function init() {
     const tideLink = currentNoaaId
       ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
       : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions breakdown (saved spots). For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
+    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions Breakdown (saved spots). For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {

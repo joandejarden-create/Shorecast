@@ -311,7 +311,7 @@ section {
   color: var(--muted);
 }
 
-/* 7-day grid */
+/* 7-Day Outlook grid */
 .day-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
