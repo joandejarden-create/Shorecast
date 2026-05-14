@@ -195,17 +195,6 @@ body {
   font-weight: 600;
 }
 
-.confidence-banner {
-  margin: 0.5rem 0 0;
-  padding: 0.55rem 0.65rem;
-  border-radius: var(--radius-sm);
-  background: #fff8e6;
-  border: 1px solid #e8d48b;
-  font-size: 0.78rem;
-  line-height: 1.4;
-  color: #6a5210;
-}
-
 .map-card {
   background: var(--card);
   border-radius: var(--radius);

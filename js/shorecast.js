@@ -297,17 +297,6 @@ function mergeSeries(marine, weather) {
   return rows;
 }
 
-/** Many null marine heights → grid point is weak for swell/surf zone (e.g. inland). */
-function assessLowMarineConfidence(rows) {
-  if (!rows.length) return true;
-  const sample = rows.slice(0, Math.min(rows.length, 144));
-  let thin = 0;
-  for (const r of sample) {
-    if (r.swell_m == null && r.wave_m == null) thin++;
-  }
-  return thin / sample.length > 0.5;
-}
-
 function isEntryWindow(iso) {
   const h = hourFromApiLocal(iso);
   return h >= 7 && h <= 18;
@@ -506,7 +495,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
         note: stats.sstAvgF != null ? "SST from marine model." : "SST missing at this grid point.",
         warn: false,
-        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — check the confidence banner.",
+        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Windy map and local observation.",
       },
     ],
   };
@@ -556,7 +545,6 @@ function init() {
     btnRefresh: document.getElementById("nav-refresh"),
     tideLine: document.getElementById("tide-line"),
     dataFresh: document.getElementById("data-fresh"),
-    confidenceBanner: document.getElementById("confidence-banner"),
     btnUseGeo: document.getElementById("btn-use-geo"),
     windyFrame: document.getElementById("windy-embed"),
     tidePanel: document.getElementById("tide-panel"),
@@ -853,16 +841,6 @@ function init() {
 
       const maxGen = Math.max(marine.generationtime_ms ?? 0, weather.generationtime_ms ?? 0);
       updateDataFreshFooter(maxGen);
-      const lowMarine = assessLowMarineConfidence(merged);
-      if (el.confidenceBanner) {
-        if (lowMarine) {
-          el.confidenceBanner.hidden = false;
-          el.confidenceBanner.textContent =
-            "Marine data thin here: swell and combined wave heights are often missing at this grid (common well inside bays or far from the surf zone). Treat swell- and wave-driven parts of the score as low confidence and rely on local observation.";
-        } else {
-          el.confidenceBanner.hidden = true;
-        }
-      }
 
       const allKeys = [...new Set(merged.map((r) => dateKeyFromApiLocal(r.time)))].sort();
       const today = todayKeyForTz(tz);
@@ -917,7 +895,6 @@ function init() {
       el.main.hidden = false;
     } catch (e) {
       console.error(e);
-      if (el.confidenceBanner) el.confidenceBanner.hidden = true;
       if (el.dataFresh) el.dataFresh.textContent = "";
       setStatus(e.message || "Could not load forecast.", true);
     }
