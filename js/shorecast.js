@@ -477,7 +477,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "sea",
-        name: "Sea Surface Temperature",
+        name: "Sea Surface Temp",
         value: `${(stats.sstAvgF ?? 0).toFixed(0)}°F`,
         score: Math.round(wSea),
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
