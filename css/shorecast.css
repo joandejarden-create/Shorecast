@@ -183,18 +183,6 @@ body {
   background: #e4f0fa;
 }
 
-.tide-line {
-  margin: 0.75rem 0 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.tide-line a {
-  color: #1e6bb8;
-  font-weight: 600;
-}
-
 .factor--ref .meta {
   font-size: 0.72rem;
   text-align: right;
