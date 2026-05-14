@@ -7,13 +7,22 @@ const MARINE_URL = "https://marine-api.open-meteo.com/v1/marine";
 const WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
 const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
 
-const PRESETS = [
-  { name: "Lauderdale-by-the-Sea, Florida", short: "Lauderdale by the sea", lat: 26.1923, lon: -80.0964, tz: "America/New_York" },
-  { name: "Key Largo, Florida", short: "Key Largo", lat: 25.0865, lon: -80.4473, tz: "America/New_York" },
-  { name: "Jupiter, Florida", short: "Jupiter", lat: 26.9342, lon: -80.0942, tz: "America/New_York" },
-  { name: "West Palm Beach, Florida", short: "West Palm Beach", lat: 26.7153, lon: -80.0534, tz: "America/New_York" },
-  { name: "San Diego (La Jolla), California", short: "La Jolla", lat: 32.8328, lon: -117.2713, tz: "America/Los_Angeles" },
-  { name: "Kailua-Kona, Hawaii", short: "Kona", lat: 19.639, lon: -155.9969, tz: "Pacific/Honolulu" },
+/** South Florida — fixed pins (not GPS). NOAA ids are nearby CO-OPS stations for tide links. */
+const PRESETS_SOUTH_FL = [
+  { name: "Lauderdale-by-the-Sea, Florida", short: "Lauderdale-by-the-Sea", lat: 26.1923, lon: -80.0964, tz: "America/New_York", noaaId: "8722949" },
+  { name: "Miami Beach, Florida", short: "Miami Beach", lat: 25.7907, lon: -80.1300, tz: "America/New_York", noaaId: "8723170" },
+  { name: "Key Largo, Florida", short: "Key Largo", lat: 25.0865, lon: -80.4473, tz: "America/New_York", noaaId: "8723214" },
+  { name: "Islamorada, Florida", short: "Islamorada", lat: 24.9243, lon: -80.6284, tz: "America/New_York", noaaId: "8723722" },
+  { name: "Pompano Beach, Florida", short: "Pompano Beach", lat: 26.2278, lon: -80.0928, tz: "America/New_York", noaaId: "8722956" },
+  { name: "Deerfield Beach, Florida", short: "Deerfield Beach", lat: 26.3184, lon: -80.0659, tz: "America/New_York", noaaId: "8722956" },
+  { name: "Boca Raton, Florida", short: "Boca Raton", lat: 26.3683, lon: -80.1289, tz: "America/New_York", noaaId: "8722670" },
+  { name: "West Palm Beach, Florida", short: "West Palm Beach", lat: 26.7153, lon: -80.0534, tz: "America/New_York", noaaId: "8722670" },
+  { name: "Jupiter, Florida", short: "Jupiter", lat: 26.9342, lon: -80.0942, tz: "America/New_York", noaaId: "8722669" },
+];
+
+const PRESETS_OTHER = [
+  { name: "San Diego (La Jolla), California", short: "La Jolla", lat: 32.8328, lon: -117.2713, tz: "America/Los_Angeles", noaaId: "9410230" },
+  { name: "Kailua-Kona, Hawaii", short: "Kona", lat: 19.639, lon: -155.9969, tz: "Pacific/Honolulu", noaaId: "1615680" },
 ];
 
 /** Rough IANA zone for Open-Meteo `timezone` (hourly labels bucket correctly). */
@@ -225,6 +234,17 @@ function mergeSeries(marine, weather) {
   return rows;
 }
 
+/** Many null marine heights → grid point is weak for swell/surf zone (e.g. inland). */
+function assessLowMarineConfidence(rows) {
+  if (!rows.length) return true;
+  const sample = rows.slice(0, Math.min(rows.length, 144));
+  let thin = 0;
+  for (const r of sample) {
+    if (r.swell_m == null && r.wave_m == null) thin++;
+  }
+  return thin / sample.length > 0.5;
+}
+
 function isEntryWindow(iso) {
   const h = hourFromApiLocal(iso);
   return h >= 7 && h <= 18;
@@ -343,6 +363,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.wind * 100),
         note: windKn <= 10 ? "Calm = easier shore entry." : "Stronger wind — more surface chop.",
         warn: windKn > 15,
+        why: "Uses the max wind speed between 7am–6pm (model local time). Scoring: about 100 at ≤8 kn, easing through 8–12 kn, steeper drop 12–22 kn, very low above ~22 kn. Values above ~15 kn are flagged as caution for the surf zone.",
       },
       {
         id: "swell",
@@ -352,6 +373,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.swellH * 100),
         note: swellFt <= 1.5 ? "Small swell = gentler surf zone." : "Larger swell — use caution at entry.",
         warn: swellFt > 2,
+        why: "Uses the maximum swell height (ft) in that daytime window. Tiny swell scores near 100; scores fall as swell grows, with stronger penalties past ~1.5–2 ft for shore entries.",
       },
       {
         id: "period",
@@ -361,6 +383,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.swellP * 100),
         note: swellS >= 10 ? "Longer period = cleaner sets." : "Short period can mean confused chop.",
         warn: swellS < 8,
+        why: "Uses the shortest swell period in the window (chop proxy). Longer periods (about 10–14+ s) score higher; under ~8 s is flagged because energy arrives in shorter, messier intervals.",
       },
       {
         id: "power",
@@ -370,6 +393,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.waveH * 100),
         note: "From combined sea height (Open-Meteo). Lower is calmer at the surface.",
         warn: wWave < 70,
+        why: "Based on the max combined significant wave height (marine wave_height) in meters, converted to feet mentally for the bar. Larger combined seas lower the score; this is not the same as swell-only height.",
       },
       {
         id: "ww",
@@ -379,6 +403,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.windWave * 100),
         note: (stats.windWaveMaxFt ?? 0) < 0.5 ? "Mostly glassy wind sea." : "Wind-driven chop possible.",
         warn: (stats.windWaveMaxFt ?? 0) > 1,
+        why: "Max wind-sea height in the window. Low wind waves score high; above ~1 ft the score drops and the flag warns of wind-driven chop on top of any swell.",
       },
       {
         id: "vis",
@@ -388,6 +413,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.airVis * 100),
         note: "Miles of view above the water (meteorological visibility).",
         warn: wVis < 75,
+        why: "Uses the minimum air visibility (miles) in the daytime window. 10+ mi is best; under ~6 mi the score falls quickly. This is not underwater visibility.",
       },
       {
         id: "water",
@@ -397,6 +423,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.waterProxy * 100),
         note: "Proxy from recent rain + swell — not satellite turbidity. Expect reduced vis after runoff.",
         warn: wp.score < 72,
+        why: "Heuristic from cumulative hourly precip and max swell over recent calendar days vs. your selected day — not Kd or satellite turbidity. Heavy rain or swell runoff lowers this sub-score to hint at murkier water.",
       },
       {
         id: "airt",
@@ -406,6 +433,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.airTemp * 100),
         note: "Comfort for surface interval / suit choice.",
         warn: false,
+        why: "Daytime average air temp. A comfort band around the mid-70s to low-90s °F scores near 100; cooler or hotter hours reduce the score modestly.",
       },
       {
         id: "sea",
@@ -415,6 +443,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
         note: stats.sstAvgF != null ? "SST from marine model." : "SST missing at this grid point.",
         warn: false,
+        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — check the confidence banner.",
       },
     ],
   };
@@ -442,7 +471,8 @@ function init() {
     locLabel: document.getElementById("loc-label"),
     locPanel: document.getElementById("loc-panel"),
     locSearch: document.getElementById("loc-search"),
-    presetList: document.getElementById("preset-list"),
+    presetListSf: document.getElementById("preset-list-sf"),
+    presetListOther: document.getElementById("preset-list-other"),
     dayGrid: document.getElementById("day-grid"),
     main: document.getElementById("main-content"),
     status: document.getElementById("status"),
@@ -461,17 +491,45 @@ function init() {
     hourlyTitle: document.getElementById("hourly-title"),
     hourStrip: document.getElementById("hour-strip"),
     btnRefresh: document.getElementById("nav-refresh"),
+    tideLine: document.getElementById("tide-line"),
+    dataFresh: document.getElementById("data-fresh"),
+    confidenceBanner: document.getElementById("confidence-banner"),
+    btnUseGeo: document.getElementById("btn-use-geo"),
   };
 
-  let tz = PRESETS[0].tz;
-  let lat = PRESETS[0].lat;
-  let lon = PRESETS[0].lon;
-  let placeName = PRESETS[0].name;
-  let placeShort = PRESETS[0].short;
+  let tz = PRESETS_SOUTH_FL[0].tz;
+  let lat = PRESETS_SOUTH_FL[0].lat;
+  let lon = PRESETS_SOUTH_FL[0].lon;
+  let placeName = PRESETS_SOUTH_FL[0].name;
+  let placeShort = PRESETS_SOUTH_FL[0].short;
+  /** NOAA CO-OPS station id for tide link; null when location is custom / geolocated. */
+  let currentNoaaId = PRESETS_SOUTH_FL[0].noaaId ?? null;
   let merged = [];
   let dayKeys = [];
   let selectedKey = null;
   let searchTimer = null;
+
+  function renderTideLine() {
+    if (!el.tideLine) return;
+    const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
+    const curUrl = "https://tidesandcurrents.noaa.gov/currents/";
+    const tideLink = currentNoaaId
+      ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA tide predictions (nearby preset station)</a>`
+      : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
+    el.tideLine.innerHTML = `${tideLink}. <strong>Swell and tide stage</strong> together shape entries; Open-Meteo does not include official tide tables or currents. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a> or local pilot books.`;
+  }
+
+  function updateDataFreshFooter(maxGenMs) {
+    if (!el.dataFresh) return;
+    const when = new Date();
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+    const lineA = `Loaded ${when.toLocaleString()} (${tzName}).`;
+    const lineB =
+      maxGenMs > 0
+        ? ` Open-Meteo reported API build time up to ${maxGenMs.toFixed(0)} ms (server processing), not the model run time.`
+        : "";
+    el.dataFresh.textContent = lineA + lineB;
+  }
 
   function setStatus(msg, isErr) {
     if (!msg) {
@@ -485,23 +543,49 @@ function init() {
     el.status.classList.toggle("error", !!isErr);
   }
 
-  function renderPresets() {
-    el.presetList.innerHTML = PRESETS.map(
-      (p, i) =>
-        `<button type="button" class="pick" data-i="${i}"><strong>${escapeHtml(p.short)}</strong><span style="color:#5a7285;font-weight:400"> — ${escapeHtml(p.name)}</span></button>`
-    ).join("");
-    el.presetList.querySelectorAll("button.pick").forEach((btn) => {
+  function applyPreset(p) {
+    lat = p.lat;
+    lon = p.lon;
+    tz = p.tz;
+    placeName = p.name;
+    placeShort = p.short;
+    currentNoaaId = p.noaaId ?? null;
+    renderTideLine();
+    el.locPanel.classList.remove("open");
+    load();
+  }
+
+  function renderPresetButtons(container, list) {
+    if (!container) return;
+    container.innerHTML = list
+      .map((p) => {
+        const payload = encodeURIComponent(
+          JSON.stringify({
+            lat: p.lat,
+            lon: p.lon,
+            tz: p.tz,
+            name: p.name,
+            short: p.short,
+            noaaId: p.noaaId ?? null,
+          })
+        );
+        return `<button type="button" class="pick" data-preset="${payload}"><strong>${escapeHtml(p.short)}</strong><span style="color:#5a7285;font-weight:400"> — ${escapeHtml(p.name)}</span></button>`;
+      })
+      .join("");
+    container.querySelectorAll("button.pick").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const p = PRESETS[+btn.dataset.i];
-        lat = p.lat;
-        lon = p.lon;
-        tz = p.tz;
-        placeName = p.name;
-        placeShort = p.short;
-        el.locPanel.classList.remove("open");
-        load();
+        try {
+          applyPreset(JSON.parse(decodeURIComponent(btn.dataset.preset)));
+        } catch {
+          /* ignore */
+        }
       });
     });
+  }
+
+  function renderPresets() {
+    renderPresetButtons(el.presetListSf, PRESETS_SOUTH_FL);
+    renderPresetButtons(el.presetListOther, PRESETS_OTHER);
   }
 
   function escapeHtml(s) {
@@ -537,6 +621,8 @@ function init() {
           tz = r.timezone || guessTimezone(r.latitude, r.longitude);
           placeName = label;
           placeShort = r.name;
+          currentNoaaId = null;
+          renderTideLine();
           selectedKey = null;
           el.locPanel.classList.remove("open");
           load();
@@ -564,6 +650,59 @@ function init() {
 
   el.btnRefresh?.addEventListener("click", () => load());
 
+  el.btnUseGeo?.addEventListener("click", () => {
+    if (!navigator.geolocation) {
+      setStatus("Your browser does not support geolocation. Use search or a preset.", true);
+      return;
+    }
+    setStatus("Getting your location…");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        tz = guessTimezone(lat, lon);
+        currentNoaaId = null;
+        selectedKey = null;
+        try {
+          const revUrl = `${GEO_URL}?${new URLSearchParams({
+            latitude: String(lat),
+            longitude: String(lon),
+            count: "1",
+            language: "en",
+            format: "json",
+          })}`;
+          const data = await fetchJson(revUrl);
+          const r = data.results?.[0];
+          if (r) {
+            placeName = [r.name, r.admin1, r.country_code].filter(Boolean).join(", ");
+            placeShort = r.name;
+            tz = r.timezone || guessTimezone(lat, lon);
+          } else {
+            placeShort = "My location";
+            placeName = `My location (${lat.toFixed(3)}°, ${lon.toFixed(3)}°)`;
+          }
+        } catch {
+          placeShort = "My location";
+          placeName = `My location (${lat.toFixed(3)}°, ${lon.toFixed(3)}°)`;
+        }
+        renderTideLine();
+        el.locPanel.classList.remove("open");
+        setStatus("");
+        load();
+      },
+      (err) => {
+        const msg =
+          err.code === 1
+            ? "Location permission denied — use a saved spot or search instead."
+            : err.code === 2
+              ? "Location unavailable — try again or pick a preset."
+              : "Could not read GPS — pick a preset or search.";
+        setStatus(msg, true);
+      },
+      { enableHighAccuracy: true, timeout: 18000, maximumAge: 600000 }
+    );
+  });
+
   async function load() {
     el.locLabel.textContent = placeShort;
     setStatus("Loading forecast…");
@@ -575,6 +714,19 @@ function init() {
       ]);
       merged = mergeSeries(marine, weather);
       if (!merged.length) throw new Error("No overlapping hourly data for this location.");
+
+      const maxGen = Math.max(marine.generationtime_ms ?? 0, weather.generationtime_ms ?? 0);
+      updateDataFreshFooter(maxGen);
+      const lowMarine = assessLowMarineConfidence(merged);
+      if (el.confidenceBanner) {
+        if (lowMarine) {
+          el.confidenceBanner.hidden = false;
+          el.confidenceBanner.textContent =
+            "Marine data thin here: swell and combined wave heights are often missing at this grid (common well inside bays or far from the surf zone). Treat swell- and wave-driven parts of the score as low confidence and rely on local observation.";
+        } else {
+          el.confidenceBanner.hidden = true;
+        }
+      }
 
       const allKeys = [...new Set(merged.map((r) => dateKeyFromApiLocal(r.time)))].sort();
       const today = todayKeyForTz(tz);
@@ -629,6 +781,8 @@ function init() {
       el.main.hidden = false;
     } catch (e) {
       console.error(e);
+      if (el.confidenceBanner) el.confidenceBanner.hidden = true;
+      if (el.dataFresh) el.dataFresh.textContent = "";
       setStatus(e.message || "Could not load forecast.", true);
     }
   }
@@ -659,14 +813,28 @@ function init() {
     el.breakdown.innerHTML = bd.factors
       .map((f) => {
         const barClass = f.warn ? (f.score < 55 ? "bad" : "warn") : "";
+        const panelId = `why-${f.id}`;
         return `<div class="factor">
           <div class="factor-head"><span class="name">${escapeHtml(f.name)}</span><span class="meta">${escapeHtml(f.value)} · ${f.score}/100</span></div>
           <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${f.score}%"></div></div>
           <div class="note">${escapeHtml(f.note)}</div>
           <div class="weight">Weight in score: ${f.weightPct}%</div>
+          <button type="button" class="factor-why-btn" aria-expanded="false" aria-controls="${panelId}">Why this score?</button>
+          <div class="factor-why-panel" id="${panelId}" hidden>${escapeHtml(f.why)}</div>
         </div>`;
       })
       .join("");
+
+    el.breakdown.querySelectorAll(".factor-why-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const panelId = btn.getAttribute("aria-controls");
+        const panel = panelId ? document.getElementById(panelId) : null;
+        if (!panel) return;
+        const open = btn.getAttribute("aria-expanded") === "true";
+        btn.setAttribute("aria-expanded", open ? "false" : "true");
+        panel.hidden = open;
+      });
+    });
 
     render48hCharts();
     const rain = bd.wp.rain48in.toFixed(2);
@@ -728,6 +896,7 @@ function init() {
     `;
   }
 
+  renderTideLine();
   renderPresets();
   load();
 }

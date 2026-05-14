@@ -30,17 +30,24 @@
 
     <div class="location-row">
       <button type="button" class="location-btn" id="loc-btn" aria-expanded="false" aria-haspopup="listbox">
-        <span id="loc-label">Lauderdale by the sea</span>
+        <span id="loc-label">Lauderdale-by-the-Sea</span>
         <span class="chev" aria-hidden="true">▾</span>
       </button>
       <div class="location-panel" id="loc-panel" role="dialog" aria-label="Choose location">
-        <input type="search" class="location-search" id="loc-search" placeholder="Search city or beach…" autocomplete="off" />
-        <p class="preset-label">Saved spots</p>
-        <div id="preset-list"></div>
-        <p class="preset-label">Search results</p>
-        <div id="geo-results"></div>
+        <p class="panel-intro">Choose a <strong>saved spot</strong> (fixed map pin), <strong>GPS</strong> (this device), or <strong>search</strong>. Geolocation is not the same as the list — it reads where you are right now.</p>
+        <p class="preset-label">South Florida</p>
+        <div id="preset-list-sf" class="preset-buttons"></div>
+        <p class="preset-label">Elsewhere</p>
+        <div id="preset-list-other" class="preset-buttons"></div>
+        <button type="button" class="btn-geo" id="btn-use-geo">Use my location (GPS)</button>
+        <p class="preset-label">Search any place</p>
+        <input type="search" class="location-search" id="loc-search" placeholder="City, island, beach…" autocomplete="off" />
+        <div id="geo-results" class="geo-results" aria-live="polite"></div>
       </div>
     </div>
+
+    <p class="tide-line" id="tide-line" role="note"></p>
+    <p class="confidence-banner" id="confidence-banner" hidden></p>
 
     <div id="status" class="status-banner" hidden></div>
 
@@ -129,6 +136,7 @@
       </section>
 
       <footer class="foot">
+        <p class="data-fresh" id="data-fresh"></p>
         Marine and weather data via <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
         Forecasts are guidance only — always check local conditions and dive within your training.
       </footer>
