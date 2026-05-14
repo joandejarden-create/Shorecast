@@ -561,7 +561,7 @@ function init() {
     if (tideState.mode !== "ok" || !Array.isArray(tideState.preds)) return "";
     const rows = tideState.preds.filter((r) => String(r.t).slice(0, 10) === dayKey);
     if (!rows.length) return "Tide —";
-    const bits = rows.map((r) => {
+    const bits = rows.slice(0, 4).map((r) => {
       const tag = r.type === "H" ? "Hi" : r.type === "L" ? "Lo" : "Td";
       const ft = Number.parseFloat(r.v);
       const h = Number.isFinite(ft) ? `${ft.toFixed(1)}ft` : "?";
