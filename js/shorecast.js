@@ -427,7 +427,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "power",
-        name: "Wave energy (proxy)",
+        name: "Wave Energy (Proxy)",
         value: `${wavePowerApprox.toFixed(2)}`,
         score: Math.round(wWave),
         weightPct: Math.round(WEIGHTS.waveH * 100),
@@ -437,7 +437,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "ww",
-        name: "Wind waves",
+        name: "Wind Waves",
         value: `${(stats.windWaveMaxFt ?? 0).toFixed(1)} ft`,
         score: Math.round(wWw),
         weightPct: Math.round(WEIGHTS.windWave * 100),
@@ -447,7 +447,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "vis",
-        name: "Air visibility",
+        name: "Air Visibility",
         value: `${(stats.visMinMi ?? 0).toFixed(1)} mi`,
         score: Math.round(wVis),
         weightPct: Math.round(WEIGHTS.airVis * 100),
@@ -457,7 +457,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "water",
-        name: "Water clarity (heuristic)",
+        name: "Water Clarity (Heuristic)",
         value: `${wp.rain48in.toFixed(2)} in rain / 48h`,
         score: Math.round(wp.score),
         weightPct: Math.round(WEIGHTS.waterProxy * 100),
@@ -467,7 +467,7 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "airt",
-        name: "Air temperature",
+        name: "Air Temperature",
         value: `${(stats.airTempAvgF ?? 0).toFixed(0)}°F`,
         score: Math.round(wAir),
         weightPct: Math.round(WEIGHTS.airTemp * 100),
@@ -477,13 +477,13 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "sea",
-        name: "Sea surface temp",
+        name: "Sea Surface Temperature",
         value: `${(stats.sstAvgF ?? 0).toFixed(0)}°F`,
         score: Math.round(wSea),
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
         note: stats.sstAvgF != null ? "SST from marine model." : "SST missing at this grid point.",
         warn: false,
-        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Waves & swell (Windy) reference card and local observation.",
+        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Waves & Swell (Windy) reference card and local observation.",
       },
     ],
   };
@@ -556,7 +556,7 @@ function init() {
     const tideLink = currentNoaaId
       ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
       : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions breakdown (saved spots). For waves see the Windy card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
+    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions breakdown (saved spots). For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {
@@ -641,7 +641,7 @@ function init() {
     return {
       id: "windy-ref",
       referenceOnly: true,
-      name: "Waves & swell (Windy)",
+      name: "Waves & Swell (Windy)",
       valueHtml: `<a href="${escapeAttr(url)}" target="_blank" rel="noopener">Open Windy (waves)</a>`,
       note: "Third-party wave map centered on this forecast pin. Useful when Open-Meteo marine swell is thin at this grid.",
       why: "Windy uses its own models and layers; opening the waves view at the same latitude and longitude as this app does not change the Shorecast score. Use it as situational context and follow Windy’s terms.",
@@ -655,7 +655,7 @@ function init() {
       return {
         id,
         referenceOnly: true,
-        name: "Tide forecast (NOAA)",
+        name: "Tide Forecast (NOAA)",
         valueHtml: `<a href="${escapeAttr(mapUrl)}" target="_blank" rel="noopener">NOAA tides map</a>`,
         note: "Saved presets include a nearby CO-OPS station. Search or GPS has no gauge linked—open NOAA to pick one for your spot.",
         why: "Official U.S. tide tables are tied to a specific station ID. This app pairs one with each saved South Florida / Elsewhere preset; custom locations need you to choose a gauge on NOAA’s site.",
@@ -665,7 +665,7 @@ function init() {
       return {
         id,
         referenceOnly: true,
-        name: "Tide forecast (NOAA)",
+        name: "Tide Forecast (NOAA)",
         valueHtml: `<span class="meta-plain">—</span>`,
         note: tideState.msg || "Could not load NOAA tides.",
         why: "The NOAA CO-OPS JSON request failed (network, station, or server). Use the NOAA tides map link in this card or the gray note above, then retry refresh.",
@@ -679,7 +679,7 @@ function init() {
       return {
         id,
         referenceOnly: true,
-        name: "Tide forecast (NOAA)",
+        name: "Tide Forecast (NOAA)",
         valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
         note: "No high/low extrema fall on this calendar day in the current 7-day CO-OPS window for this fetch.",
         why: "Heights are MLLW feet at the linked gauge, station local clock (lst_ldt). Extrema are listed only when NOAA’s begin_date + 168 h window covers that day—open the full NOAA page for a longer horizon.",
@@ -696,7 +696,7 @@ function init() {
     return {
       id,
       referenceOnly: true,
-      name: "Tide forecast (NOAA)",
+      name: "Tide Forecast (NOAA)",
       valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
       note: bits.join(" · ") + extra,
       why: "Official NOAA CO-OPS high/low predictions (not part of the blended score). The station is chosen for proximity to each preset—confirm against your chart for the exact entry.",
