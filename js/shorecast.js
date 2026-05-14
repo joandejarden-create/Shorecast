@@ -161,27 +161,11 @@ async function fetchJson(url) {
   return res.json();
 }
 
-/** Windy embed: waves overlay at the same coordinates as the forecast pin. */
-function buildWindyEmbedUrl(lat, lon) {
-  const z = Math.abs(lat) > 50 ? 9 : 11;
-  const p = new URLSearchParams({
-    lat: String(lat),
-    lon: String(lon),
-    zoom: String(z),
-    level: "surface",
-    overlay: "waves",
-    menu: "",
-    message: "false",
-    marker: "true",
-    calendar: "now",
-    pressure: "",
-    type: "map",
-    location: "coordinates",
-    detail: "",
-    detailLat: String(lat),
-    detailLon: String(lon),
-  });
-  return `https://embed.windy.com/embed2.html?${p}`;
+/** Open Windy in a new tab at this pin with the waves overlay selected. */
+function buildWindyWavesUrl(lat, lon) {
+  const la = Number(lat);
+  const lo = Number(lon);
+  return `https://www.windy.com/${la.toFixed(4)}/${lo.toFixed(4)}?waves,11`;
 }
 
 /**
@@ -221,6 +205,10 @@ async function fetchNoaaHiloPredictions(stationId, stationTz) {
   const preds = data.predictions;
   if (!Array.isArray(preds) || !preds.length) throw new Error("No tide predictions returned.");
   return preds;
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
 function buildMarineParams(lat, lon, tz) {
@@ -495,7 +483,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
         note: stats.sstAvgF != null ? "SST from marine model." : "SST missing at this grid point.",
         warn: false,
-        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Windy map and local observation.",
+        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Waves & swell (Windy) reference card and local observation.",
       },
     ],
   };
@@ -546,10 +534,9 @@ function init() {
     tideLine: document.getElementById("tide-line"),
     dataFresh: document.getElementById("data-fresh"),
     btnUseGeo: document.getElementById("btn-use-geo"),
-    windyFrame: document.getElementById("windy-embed"),
-    tidePanel: document.getElementById("tide-panel"),
   };
 
+  let tideState = { mode: "none" };
   let tz = PRESETS_SOUTH_FL[0].tz;
   let lat = PRESETS_SOUTH_FL[0].lat;
   let lon = PRESETS_SOUTH_FL[0].lon;
@@ -569,60 +556,7 @@ function init() {
     const tideLink = currentNoaaId
       ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
       : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries; high/low below is from NOAA predictions (saved spots only). Swell on the water is on the <a href="#windy-map">Windy map</a>. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
-  }
-
-  function updateWindyEmbed() {
-    if (!el.windyFrame) return;
-    el.windyFrame.src = buildWindyEmbedUrl(lat, lon);
-  }
-
-  function renderTidePanelMessage(html) {
-    if (!el.tidePanel) return;
-    el.tidePanel.innerHTML = html;
-  }
-
-  function renderTidePanelFromPredictions(preds, stationId) {
-    if (!el.tidePanel || !preds?.length) return;
-    const byDay = new Map();
-    for (const row of preds) {
-      const dayKey = String(row.t).slice(0, 10);
-      if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-      byDay.get(dayKey).push(row);
-    }
-    const blocks = [];
-    for (const [dayKey, rows] of byDay) {
-      const [y, mo, d] = dayKey.split("-").map(Number);
-      const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(y, mo - 1, d).getDay()];
-      const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][mo - 1];
-      const lines = rows
-        .map((r) => {
-          const typ = r.type === "H" ? "High" : r.type === "L" ? "Low" : "—";
-          const ft = Number.parseFloat(r.v);
-          const v = Number.isFinite(ft) ? `${ft.toFixed(1)} ft` : escapeHtml(String(r.v));
-          return `<div class="tide-row"><span class="tide-type ${r.type === "H" ? "hi" : "lo"}">${typ}</span><span class="tide-when">${escapeHtml(formatNoaaClock(r.t))}</span><span class="tide-val">${v}</span></div>`;
-        })
-        .join("");
-      blocks.push(`<div class="tide-day"><div class="tide-day-h">${escapeHtml(wd)} ${escapeHtml(mon)} ${d}</div>${lines}</div>`);
-    }
-    const noaa = `https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(stationId)}`;
-    el.tidePanel.innerHTML = `
-      <p class="tide-panel-note">Heights are MLLW feet at NOAA station <strong>${escapeHtml(String(stationId))}</strong> (near this preset). <a href="${noaa}" target="_blank" rel="noopener">Full NOAA table</a></p>
-      <div class="tide-days">${blocks.join("")}</div>
-    `;
-  }
-
-  function renderTidePanelNoStation() {
-    renderTidePanelMessage(
-      `<p class="tide-panel-note">In-app high/low tides use a NOAA station tied to each <strong>saved spot</strong>. For search or GPS, use the NOAA map link above or the official station page after you pick a gauge.</p>`
-    );
-  }
-
-  function renderTidePanelError(msg) {
-    const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
-    renderTidePanelMessage(
-      `<p class="tide-panel-note tide-panel-err">${escapeHtml(msg)} <a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a></p>`
-    );
+    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions breakdown (saved spots). For waves see the Windy card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {
@@ -700,6 +634,94 @@ function init() {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function windyRefFactor() {
+    const url = buildWindyWavesUrl(lat, lon);
+    return {
+      id: "windy-ref",
+      referenceOnly: true,
+      name: "Waves & swell (Windy)",
+      valueHtml: `<a href="${escapeAttr(url)}" target="_blank" rel="noopener">Open Windy (waves)</a>`,
+      note: "Third-party wave map centered on this forecast pin. Useful when Open-Meteo marine swell is thin at this grid.",
+      why: "Windy uses its own models and layers; opening the waves view at the same latitude and longitude as this app does not change the Shorecast score. Use it as situational context and follow Windy’s terms.",
+    };
+  }
+
+  function tideRefFactor() {
+    const id = "tide-noaa";
+    const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
+    if (tideState.mode === "none") {
+      return {
+        id,
+        referenceOnly: true,
+        name: "Tide forecast (NOAA)",
+        valueHtml: `<a href="${escapeAttr(mapUrl)}" target="_blank" rel="noopener">NOAA tides map</a>`,
+        note: "Saved presets include a nearby CO-OPS station. Search or GPS has no gauge linked—open NOAA to pick one for your spot.",
+        why: "Official U.S. tide tables are tied to a specific station ID. This app pairs one with each saved South Florida / Elsewhere preset; custom locations need you to choose a gauge on NOAA’s site.",
+      };
+    }
+    if (tideState.mode === "err") {
+      return {
+        id,
+        referenceOnly: true,
+        name: "Tide forecast (NOAA)",
+        valueHtml: `<span class="meta-plain">—</span>`,
+        note: tideState.msg || "Could not load NOAA tides.",
+        why: "The NOAA CO-OPS JSON request failed (network, station, or server). Use the NOAA tides map link in this card or the gray note above, then retry refresh.",
+      };
+    }
+    const preds = tideState.preds;
+    const stationId = tideState.stationId;
+    const noaaPage = `https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(String(stationId))}`;
+    const onDay = preds.filter((r) => String(r.t).slice(0, 10) === selectedKey);
+    if (!onDay.length) {
+      return {
+        id,
+        referenceOnly: true,
+        name: "Tide forecast (NOAA)",
+        valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
+        note: "No high/low extrema fall on this calendar day in the current 7-day CO-OPS window for this fetch.",
+        why: "Heights are MLLW feet at the linked gauge, station local clock (lst_ldt). Extrema are listed only when NOAA’s begin_date + 168 h window covers that day—open the full NOAA page for a longer horizon.",
+      };
+    }
+    const max = 5;
+    const bits = onDay.slice(0, max).map((r) => {
+      const typ = r.type === "H" ? "High" : r.type === "L" ? "Low" : "Tide";
+      const ft = Number.parseFloat(r.v);
+      const h = Number.isFinite(ft) ? `${ft.toFixed(1)} ft` : String(r.v);
+      return `${typ} ${h} @ ${formatNoaaClock(r.t)}`;
+    });
+    const extra = onDay.length > max ? ` (+${onDay.length - max} more this day)` : "";
+    return {
+      id,
+      referenceOnly: true,
+      name: "Tide forecast (NOAA)",
+      valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
+      note: bits.join(" · ") + extra,
+      why: "Official NOAA CO-OPS high/low predictions (not part of the blended score). The station is chosen for proximity to each preset—confirm against your chart for the exact entry.",
+    };
+  }
+
+  function factorCardHtml(f) {
+    const barClass = f.warn ? (f.score < 55 ? "bad" : "warn") : "";
+    const panelId = `why-${f.id}`;
+    const meta = f.referenceOnly ? f.valueHtml : `${escapeHtml(f.value)} · ${f.score}/100`;
+    const bar = f.referenceOnly
+      ? '<div class="factor-ref-dash" aria-hidden="true"></div>'
+      : `<div class="bar-track"><div class="bar-fill ${barClass}" style="width:${f.score}%"></div></div>`;
+    const weight = f.referenceOnly
+      ? '<div class="weight">Not included in the blended score above</div>'
+      : `<div class="weight">Weight in score: ${f.weightPct}%</div>`;
+    const whyBtn = f.referenceOnly ? "More about this" : "Why this score?";
+    return `<div class="factor${f.referenceOnly ? " factor--ref" : ""}">
+          <div class="factor-head"><span class="name">${escapeHtml(f.name)}</span><span class="meta">${meta}</span></div>
+          ${bar}
+          <div class="note">${escapeHtml(f.note)}</div>
+          ${weight}
+          <button type="button" class="factor-why-btn" aria-expanded="false" aria-controls="${panelId}">${whyBtn}</button>
+          <div class="factor-why-panel" id="${panelId}" hidden>${escapeHtml(f.why)}</div>
+        </div>`;
   }
 
   async function searchGeo(q) {
@@ -813,9 +835,6 @@ function init() {
     el.locLabel.textContent = placeShort;
     setStatus("Loading forecast…");
     el.main.hidden = true;
-    updateWindyEmbed();
-    if (currentNoaaId) renderTidePanelMessage('<p class="tide-panel-note">Loading NOAA tides…</p>');
-    else renderTidePanelNoStation();
 
     async function safeTides() {
       if (!currentNoaaId) return { mode: "none" };
@@ -833,9 +852,12 @@ function init() {
         fetchJson(buildWeatherParams(lat, lon, tz)),
         safeTides(),
       ]);
-      if (tideResult.mode === "ok") renderTidePanelFromPredictions(tideResult.preds, currentNoaaId);
-      else if (tideResult.mode === "err") renderTidePanelError(tideResult.msg);
-      else renderTidePanelNoStation();
+      tideState =
+        tideResult.mode === "ok"
+          ? { mode: "ok", preds: tideResult.preds, stationId: currentNoaaId }
+          : tideResult.mode === "err"
+            ? { mode: "err", msg: String(tideResult.msg || "Could not load NOAA tides.") }
+            : { mode: "none" };
       merged = mergeSeries(marine, weather);
       if (!merged.length) throw new Error("No overlapping hourly data for this location.");
 
@@ -923,20 +945,8 @@ function init() {
     el.statTemp.textContent = `${air}° / ${sea}° F`;
     el.statVis.textContent = `${(stats.visMinMi ?? 0).toFixed(1)} mi`;
 
-    el.breakdown.innerHTML = bd.factors
-      .map((f) => {
-        const barClass = f.warn ? (f.score < 55 ? "bad" : "warn") : "";
-        const panelId = `why-${f.id}`;
-        return `<div class="factor">
-          <div class="factor-head"><span class="name">${escapeHtml(f.name)}</span><span class="meta">${escapeHtml(f.value)} · ${f.score}/100</span></div>
-          <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${f.score}%"></div></div>
-          <div class="note">${escapeHtml(f.note)}</div>
-          <div class="weight">Weight in score: ${f.weightPct}%</div>
-          <button type="button" class="factor-why-btn" aria-expanded="false" aria-controls="${panelId}">Why this score?</button>
-          <div class="factor-why-panel" id="${panelId}" hidden>${escapeHtml(f.why)}</div>
-        </div>`;
-      })
-      .join("");
+    const refTail = [windyRefFactor(), tideRefFactor()];
+    el.breakdown.innerHTML = [...bd.factors, ...refTail].map((f) => factorCardHtml(f)).join("");
 
     el.breakdown.querySelectorAll(".factor-why-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
