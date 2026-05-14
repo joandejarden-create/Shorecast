@@ -49,6 +49,33 @@
     <p class="tide-line" id="tide-line" role="note"></p>
     <p class="confidence-banner" id="confidence-banner" hidden></p>
 
+    <section class="map-card" id="windy-map" aria-labelledby="windy-h">
+      <div class="section-head">
+        <h3 id="windy-h">Waves and swell (Windy)</h3>
+        <p class="hint">Interactive map at your forecast pin — useful when the marine grid is thin on swell.</p>
+      </div>
+      <div class="windy-frame-wrap">
+        <iframe
+          id="windy-embed"
+          title="Windy — waves at forecast location"
+          width="100%"
+          height="360"
+          loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"
+          style="border: 0; display: block; width: 100%; min-height: 280px; border-radius: 14px; background: #0a1f33"
+        ></iframe>
+      </div>
+      <p class="embed-credit">Map © <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy.com</a> — embed subject to Windy terms.</p>
+    </section>
+
+    <section class="map-card tide-card" aria-labelledby="tide-h">
+      <div class="section-head">
+        <h3 id="tide-h">Tide forecast (NOAA)</h3>
+        <p class="hint">High and low water for the NOAA station linked to each saved spot (next ~7 days).</p>
+      </div>
+      <div id="tide-panel" class="tide-panel"></div>
+    </section>
+
     <div id="status" class="status-banner" hidden></div>
 
     <main id="main-content" hidden>
@@ -137,7 +164,9 @@
 
       <footer class="foot">
         <p class="data-fresh" id="data-fresh"></p>
-        Marine and weather data via <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+        Marine and weather via <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+        Tide highs/lows via <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA CO-OPS</a>.
+        Wave map via <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy</a>.
         Forecasts are guidance only — always check local conditions and dive within your training.
       </footer>
     </main>
