@@ -161,13 +161,6 @@ async function fetchJson(url) {
   return res.json();
 }
 
-/** Open Windy in a new tab at this pin with the waves overlay selected. */
-function buildWindyWavesUrl(lat, lon) {
-  const la = Number(lat);
-  const lo = Number(lon);
-  return `https://www.windy.com/${la.toFixed(4)}/${lo.toFixed(4)}?waves,11`;
-}
-
 /**
  * NOAA returns wall time as "YYYY-MM-DD HH:mm" in station `lst_ldt`.
  * Format for display without re-zoning (avoids browser-local misreads).
@@ -250,6 +243,7 @@ function buildWeatherParams(lat, lon, tz) {
     "precipitation",
     "rain",
     "wind_speed_10m",
+    "wind_gusts_10m",
     "wind_direction_10m",
   ].join(",");
   const p = new URLSearchParams({
@@ -291,6 +285,7 @@ function mergeSeries(marine, weather) {
       vis_m: weather.hourly.visibility?.[wi] ?? null,
       precip_mm: weather.hourly.precipitation?.[wi] ?? weather.hourly.rain?.[wi] ?? 0,
       wind_kn: weather.hourly.wind_speed_10m?.[wi] ?? null,
+      gust_kn: weather.hourly.wind_gusts_10m?.[wi] ?? null,
       wind_dir: weather.hourly.wind_direction_10m?.[wi] ?? null,
     });
   }
@@ -330,6 +325,7 @@ function aggregateStats(dayRows) {
 
   return {
     windMaxKn: maxOf((r) => r.wind_kn),
+    windGustMaxKn: maxOf((r) => r.gust_kn),
     swellMaxFt: maxOf((r) => (r.swell_m ?? 0) * M_TO_FT),
     swellMinS: minOf((r) => r.swell_s),
     waveMaxM: maxOf((r) => r.wave_m),
@@ -495,7 +491,7 @@ function breakdownForDay(stats, rows, dayKey) {
         weightPct: Math.round(WEIGHTS.seaTemp * 100),
         note: stats.sstAvgF != null ? "SST from marine model." : "SST missing at this grid point.",
         warn: false,
-        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Waves & Swell (Windy) reference card and local observation.",
+        why: "Daytime average sea-surface temperature from the marine model, same comfort curve as air. If SST is missing at this grid point, the neutral fallback can hide data gaps — compare with the Wind & Gusts reference card and local observation.",
       },
     ],
   };
@@ -582,7 +578,7 @@ function init() {
     const tideLink = currentNoaaId
       ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
       : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. Saved spots show a compact <strong>Tide</strong> line on each 7-Day Outlook card and the full day in <strong>Conditions Breakdown</strong>. For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
+    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. Saved spots show a compact <strong>Tide</strong> line on each 7-Day Outlook card and the full day in <strong>Conditions Breakdown</strong>. Wind and gust numbers for the selected day are in the <strong>Wind & Gusts</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {
@@ -662,15 +658,20 @@ function init() {
       .replace(/"/g, "&quot;");
   }
 
-  function windyRefFactor() {
-    const url = buildWindyWavesUrl(lat, lon);
+  function windGustsRefFactor(dayStats) {
+    const w = dayStats.windMaxKn ?? 0;
+    const gMax = dayStats.windGustMaxKn;
+    const dirDeg = dayStats.windDirAtMax;
+    const gustTxt = gMax != null && !Number.isNaN(gMax) ? `${Number(gMax).toFixed(0)} kn` : "—";
+    const dirTxt = dirDeg != null && !Number.isNaN(dirDeg) ? `${Math.round(dirDeg)}°` : "—";
+    const line = `${w.toFixed(0)} kn sustained · Gust ${gustTxt} · ${dirTxt}`;
     return {
-      id: "windy-ref",
+      id: "wind-gust-ref",
       referenceOnly: true,
-      name: "Waves & Swell (Windy)",
-      valueHtml: `<a href="${escapeAttr(url)}" target="_blank" rel="noopener">Open Windy (waves)</a>`,
-      note: "Third-party wave map centered on this forecast pin. Useful when Open-Meteo marine swell is thin at this grid.",
-      why: "Windy uses its own models and layers; opening the waves view at the same latitude and longitude as this app does not change the Shorecast score. Use it as situational context and follow Windy’s terms.",
+      name: "Wind & Gusts",
+      valueHtml: `<span class="meta-plain">${escapeHtml(line)}</span>`,
+      note: "Same daytime window as the score (about 7am–6pm, model local time) at this pin. Direction is from the hour with peak sustained wind; gust is the max gust in that window.",
+      why: "Open-Meteo hourly 10 m wind speed, gust, and direction at the forecast coordinates. This card is reference-only and does not change the blended score. Gusts are often higher than sustained wind in squalls or sea breezes.",
     };
   }
 
@@ -974,7 +975,7 @@ function init() {
     el.statTemp.textContent = `${air}° / ${sea}° F`;
     el.statVis.textContent = `${(stats.visMinMi ?? 0).toFixed(1)} mi`;
 
-    const refTail = [windyRefFactor(), tideRefFactor()];
+    const refTail = [windGustsRefFactor(stats), tideRefFactor()];
     el.breakdown.innerHTML = [...bd.factors, ...refTail].map((f) => factorCardHtml(f)).join("");
 
     el.breakdown.querySelectorAll(".factor-why-btn").forEach((btn) => {
