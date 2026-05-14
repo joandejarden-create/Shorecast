@@ -539,7 +539,6 @@ function init() {
     hourlyTitle: document.getElementById("hourly-title"),
     hourStrip: document.getElementById("hour-strip"),
     btnRefresh: document.getElementById("nav-refresh"),
-    tideLine: document.getElementById("tide-line"),
     dataFresh: document.getElementById("data-fresh"),
     btnUseGeo: document.getElementById("btn-use-geo"),
   };
@@ -569,16 +568,6 @@ function init() {
       return `${tag} ${h} ${formatNoaaShortTime(r.t)}`;
     });
     return `Tide ${bits.join(" · ")}${rows.length > 3 ? " ·…" : ""}`;
-  }
-
-  function renderTideLine() {
-    if (!el.tideLine) return;
-    const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
-    const curUrl = "https://tidesandcurrents.noaa.gov/currents/";
-    const tideLink = currentNoaaId
-      ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
-      : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. Saved spots show a compact <strong>Tide</strong> line on each 7-Day Outlook card and the full day in <strong>Conditions Breakdown</strong>. Wind and gust numbers for the selected day are in the <strong>Wind & Gusts</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {
@@ -612,7 +601,6 @@ function init() {
     placeName = p.name;
     placeShort = p.short;
     currentNoaaId = p.noaaId ?? null;
-    renderTideLine();
     el.locPanel.classList.remove("open");
     load();
   }
@@ -728,7 +716,7 @@ function init() {
         name: "Tide Forecast (NOAA)",
         valueHtml: `<span class="meta-plain">—</span>`,
         note: tideState.msg || "Could not load NOAA tides.",
-        why: "The NOAA CO-OPS JSON request failed (network, station, or server). Use the NOAA tides map link in this card or the gray note above, then retry refresh.",
+        why: "The NOAA CO-OPS JSON request failed (network, station, or server). Use the NOAA tides map link in this card, then retry refresh.",
       };
     }
     const preds = tideState.preds;
@@ -809,7 +797,6 @@ function init() {
           placeName = label;
           placeShort = r.name;
           currentNoaaId = null;
-          renderTideLine();
           selectedKey = null;
           el.locPanel.classList.remove("open");
           load();
@@ -872,7 +859,6 @@ function init() {
           placeShort = "My location";
           placeName = `My location (${lat.toFixed(3)}°, ${lon.toFixed(3)}°)`;
         }
-        renderTideLine();
         el.locPanel.classList.remove("open");
         setStatus("");
         load();
@@ -1081,7 +1067,6 @@ function init() {
     `;
   }
 
-  renderTideLine();
   renderPresets();
   load();
 }
