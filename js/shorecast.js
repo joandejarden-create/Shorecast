@@ -186,6 +186,18 @@ function formatNoaaClock(tStr) {
   return `${mon} ${d} · ${h12}:${mm}${ap}`;
 }
 
+/** NOAA local time on the same calendar day → short clock (e.g. 6:31am). */
+function formatNoaaShortTime(tStr) {
+  const m = String(tStr).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (!m) return tStr;
+  let hh = Number(m[4]);
+  const mi = Number(m[5]);
+  const apm = hh >= 12 ? "pm" : "am";
+  const h12 = hh % 12 || 12;
+  const mm = String(mi).padStart(2, "0");
+  return `${h12}:${mm}${apm}`;
+}
+
 async function fetchNoaaHiloPredictions(stationId, stationTz) {
   const begin = todayKeyForTz(stationTz).replace(/-/g, "");
   const q = new URLSearchParams({
@@ -549,6 +561,20 @@ function init() {
   let selectedKey = null;
   let searchTimer = null;
 
+  /** One-line NOAA high/low summary for a calendar day (saved presets with station only). */
+  function tideMiniForDayKey(dayKey) {
+    if (tideState.mode !== "ok" || !Array.isArray(tideState.preds)) return "";
+    const rows = tideState.preds.filter((r) => String(r.t).slice(0, 10) === dayKey);
+    if (!rows.length) return "Tide —";
+    const bits = rows.slice(0, 3).map((r) => {
+      const tag = r.type === "H" ? "Hi" : r.type === "L" ? "Lo" : "Td";
+      const ft = Number.parseFloat(r.v);
+      const h = Number.isFinite(ft) ? `${ft.toFixed(1)}ft` : "?";
+      return `${tag} ${h} ${formatNoaaShortTime(r.t)}`;
+    });
+    return `Tide ${bits.join(" · ")}${rows.length > 3 ? " ·…" : ""}`;
+  }
+
   function renderTideLine() {
     if (!el.tideLine) return;
     const mapUrl = "https://tidesandcurrents.noaa.gov/map/";
@@ -556,7 +582,7 @@ function init() {
     const tideLink = currentNoaaId
       ? `<a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(currentNoaaId)}" target="_blank" rel="noopener">NOAA official tide page (this preset station)</a>`
       : `<a href="${mapUrl}" target="_blank" rel="noopener">NOAA tides map</a> — pick a U.S. station near this spot`;
-    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. NOAA high/low summary for the <strong>selected day</strong> appears in Conditions Breakdown (saved spots). For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
+    el.tideLine.innerHTML = `${tideLink}. <strong>Tide stage and currents</strong> matter for entries. Saved spots show a compact <strong>Tide</strong> line on each 7-Day Outlook card and the full day in <strong>Conditions Breakdown</strong>. For waves see the <strong>Waves & Swell (Windy)</strong> card there. For currents see <a href="${curUrl}" target="_blank" rel="noopener">NOAA currents</a>.`;
   }
 
   function updateDataFreshFooter(maxGenMs) {
@@ -699,7 +725,7 @@ function init() {
       name: "Tide Forecast (NOAA)",
       valueHtml: `<a href="${escapeAttr(noaaPage)}" target="_blank" rel="noopener">Station ${escapeHtml(String(stationId))}</a>`,
       note: bits.join(" · ") + extra,
-      why: "Official NOAA CO-OPS high/low predictions (not part of the blended score). The station is chosen for proximity to each preset—confirm against your chart for the exact entry.",
+      why: "Official NOAA CO-OPS high/low predictions (not part of the blended score). A short tide line also appears on each day in 7-Day Outlook; this card expands the same day with full wording and the station link. Confirm against your chart for the exact entry.",
     };
   }
 
@@ -893,12 +919,15 @@ function init() {
           const per = d.stats.swellMinS ?? 0;
           const lab = formatDayLabel(d.key, today, idx);
           const selClass = d.key === selectedKey ? "selected" : "";
+          const tideMini = tideMiniForDayKey(d.key);
+          const tideRow = tideMini ? `<div class="mini mini-tide">${escapeHtml(tideMini)}</div>` : "";
           return `<button type="button" class="day-card ${selClass}" data-key="${d.key}">
             ${bestMark}
             <div class="date-line">${escapeHtml(lab)}</div>
             <div class="score-big">${d.overall} <span style="font-size:0.55em;font-weight:700;color:#5a7285">/ 100</span></div>
             <div class="rating">${escapeHtml(labelForScore(d.overall))}</div>
             <div class="mini">Wind ${wind.toFixed(0)}kt · Swell ${swell.toFixed(1)}ft · ${per.toFixed(0)}s</div>
+            ${tideRow}
           </button>`;
         })
         .join("");
