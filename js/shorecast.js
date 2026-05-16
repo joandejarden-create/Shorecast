@@ -309,28 +309,47 @@ function rowWaveFt(r) {
   return null;
 }
 
-function displayWaveForOutlook(stats) {
-  if (stats.swellMaxFt != null) {
-    return { label: "Swell", ft: stats.swellMaxFt, period: stats.swellMinS };
-  }
-  if (stats.seasMaxFt != null) {
-    return { label: "Seas", ft: stats.seasMaxFt, period: stats.swellMinS };
-  }
-  return { label: "Swell", ft: null, period: null };
+/** Plain-language spacing from swell period (seconds between crests). */
+function spacingFromPeriod(sec) {
+  if (sec == null || Number.isNaN(sec)) return null;
+  if (sec >= 10) return { short: "long", label: "Long spacing", hint: "Sets with longer gaps — often workable even if height is moderate." };
+  if (sec >= 8) return { short: "good", label: "Good spacing", hint: "Reasonable intervals between sets; still watch height and wind." };
+  if (sec >= 6) return { short: "mixed", label: "Mixed spacing", hint: "Shorter intervals — surf zone can feel busier." };
+  return { short: "stacked", label: "Stacked / chop", hint: "Waves arrive close together — your “small but one after another” stay-home case." };
 }
 
+function displayWaveForOutlook(stats) {
+  if (stats.swellMaxFt != null) {
+    const period = stats.swellPeriodAtMax ?? stats.swellMinS;
+    return { label: "Swell", ft: stats.swellMaxFt, period, kind: "swell" };
+  }
+  if (stats.seasMaxFt != null) {
+    return { label: "Seas", ft: stats.seasMaxFt, period: stats.swellPeriodAtMax ?? stats.swellMinS, kind: "seas" };
+  }
+  return { label: "Swell", ft: null, period: null, kind: null };
+}
+
+/** Period first: “8s · 1.2ft · long spacing”. */
 function formatWaveOutlookLine(stats) {
   const w = displayWaveForOutlook(stats);
   if (w.ft == null) return "Waves —";
-  const per = w.period != null ? ` · ${w.period.toFixed(0)}s` : "";
-  return `${w.label} ${w.ft.toFixed(1)}ft${per}`;
+  const sp = spacingFromPeriod(w.period);
+  if (w.period != null) {
+    const tail = sp ? ` · ${sp.label.toLowerCase()}` : "";
+    return `${w.period.toFixed(0)}s · ${w.ft.toFixed(1)}ft${tail}`;
+  }
+  return `${w.label} ${w.ft.toFixed(1)}ft`;
 }
 
 function formatWaveStatLine(stats) {
   const w = displayWaveForOutlook(stats);
   if (w.ft == null) return "—";
-  const per = w.period != null ? `${w.period.toFixed(0)}s` : "—";
-  return `${w.ft.toFixed(1)} ft · ${per}`;
+  const sp = spacingFromPeriod(w.period);
+  if (w.period != null) {
+    const tail = sp ? `\n${sp.label}` : "";
+    return `${w.period.toFixed(0)}s · ${w.ft.toFixed(1)} ft${tail}`;
+  }
+  return `${w.ft.toFixed(1)} ft (combined seas)`;
 }
 
 function buildWeatherParams(lat, lon, tz) {
@@ -424,6 +443,17 @@ function aggregateStats(dayRows) {
     windMaxKn: maxOf((r) => r.wind_kn),
     windGustMaxKn: maxOf((r) => r.gust_kn),
     swellMaxFt: maxOf((r) => (r.swell_m != null ? r.swell_m * M_TO_FT : null)),
+    swellPeriodAtMax: (() => {
+      let maxM = -1;
+      let per = null;
+      for (const r of dayRows) {
+        if (r.swell_m != null && r.swell_m > maxM) {
+          maxM = r.swell_m;
+          per = r.swell_s;
+        }
+      }
+      return per;
+    })(),
     swellMinS: minOf((r) => r.swell_s),
     seasMaxFt: maxOf((r) => (r.wave_m != null ? r.wave_m * M_TO_FT : null)),
     waveMaxM: maxOf((r) => r.wave_m),
@@ -533,18 +563,24 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "period",
-        name: "Swell Period",
-        value: stats.swellMinS != null ? `${swellS.toFixed(1)} s` : "—",
+        name: "Swell Spacing (Period)",
+        value:
+          stats.swellMinS != null
+            ? `${swellS.toFixed(0)} s · ${spacingFromPeriod(stats.swellPeriodAtMax ?? stats.swellMinS)?.label ?? "—"}`
+            : "—",
         score: Math.round(wSwellP),
         weightPct: Math.round(WEIGHTS.swellP * 100),
         note:
           stats.swellMinS != null
-            ? swellS >= 10
-              ? "Longer period = cleaner sets."
-              : "Short period can mean confused chop."
+            ? (spacingFromPeriod(stats.swellPeriodAtMax ?? stats.swellMinS)?.hint ??
+              "Period is seconds between swell crests — longer is more set-like.") +
+              (stats.swellPeriodAtMax != null && stats.swellMinS !== stats.swellPeriodAtMax
+                ? ` Outlook shows ${stats.swellPeriodAtMax.toFixed(0)}s at max swell; score uses shortest period (${stats.swellMinS.toFixed(0)}s) in the window.`
+                : "")
             : "Swell period not available when only combined seas are reported.",
         warn: stats.swellMinS != null && swellS < 8,
-        why: "Uses the shortest swell period in the window (chop proxy). Longer periods (about 10–14+ s) score higher; under ~8 s is flagged because energy arrives in shorter, messier intervals.",
+        why:
+          "Swell period is how far apart wave crests arrive (not height). Example: 6 ft at 10 s can mean organized sets with lulls; 2 ft at 5 s often feels stacked and messy at the entry. The score uses the shortest period in the daytime window (conservative); the 7-Day line pairs period with the hour of max swell height.",
       },
       {
         id: "power",
@@ -1158,7 +1194,9 @@ function init() {
         const w = r.wind_kn ?? 0;
         const wv = rowWaveFt(r);
         const wvTxt = wv
-          ? `${wv.ft.toFixed(1)}ft ${r.swell_s != null ? `${r.swell_s.toFixed(0)}s` : wv.kind === "seas" ? "seas" : "—"}`
+          ? r.swell_s != null
+            ? `${r.swell_s.toFixed(0)}s · ${wv.ft.toFixed(1)}ft`
+            : `${wv.ft.toFixed(1)}ft seas`
           : "—";
         return `<div class="hour-col"><div class="t">${tlab}</div><div class="temp">${temp}</div><div class="row">${w.toFixed(0)} ${degToCompass(r.wind_dir)}</div><div class="row">${wvTxt}</div></div>`;
       })
