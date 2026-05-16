@@ -216,6 +216,14 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function buildMarineParams(lat, lon, tz) {
   const h = [
     "swell_wave_height",
@@ -804,14 +812,6 @@ function init() {
   function renderPresets() {
     renderPresetButtons(el.presetListSf, PRESETS_SOUTH_FL);
     renderPresetButtons(el.presetListOther, PRESETS_OTHER);
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 
   function windGustsRefFactor(dayStats) {
