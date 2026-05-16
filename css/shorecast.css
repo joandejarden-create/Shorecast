@@ -402,11 +402,31 @@ section {
   box-shadow: 0 6px 24px rgba(30, 107, 184, 0.12);
 }
 
+.day-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
 .day-card .date-line {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
-  margin-bottom: 0.35rem;
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.day-card-wave {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: #4a6575;
+  line-height: 1.35;
+  text-align: right;
+  flex-shrink: 0;
+  max-width: 55%;
 }
 
 .day-card .score-big {
@@ -440,7 +460,7 @@ section {
 .badge-best {
   position: absolute;
   top: 6px;
-  right: 6px;
+  left: 6px;
   font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.04em;

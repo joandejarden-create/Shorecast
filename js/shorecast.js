@@ -1106,10 +1106,13 @@ function init() {
           const tideRow = tideMini ? `<div class="mini mini-tide">${escapeHtml(tideMini)}</div>` : "";
           return `<button type="button" class="day-card ${selClass}" data-key="${d.key}">
             ${bestMark}
-            <div class="date-line">${escapeHtml(lab)}</div>
+            <div class="day-card-head">
+              <div class="date-line">${escapeHtml(lab)}</div>
+              <div class="day-card-wave">${escapeHtml(waveLine)}</div>
+            </div>
             <div class="score-big">${d.overall} <span style="font-size:0.55em;font-weight:700;color:#5a7285">/ 100</span></div>
             <div class="rating">${escapeHtml(labelForScore(d.overall))}</div>
-            <div class="mini">Wind ${wind.toFixed(0)}kt · ${escapeHtml(waveLine)}</div>
+            <div class="mini">Wind ${wind.toFixed(0)}kt</div>
             ${tideRow}
           </button>`;
         })
