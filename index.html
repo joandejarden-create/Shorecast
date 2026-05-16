@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Shorecast — shore diving conditions</title>
-  <link rel="stylesheet" href="css/shorecast.css?v=8" />
+  <link rel="stylesheet" href="css/shorecast.css?v=9" />
 </head>
 <body>
   <div id="shorecast-root" class="app">
@@ -46,6 +46,7 @@
       </div>
     </div>
 
+    <p class="marine-banner" id="marine-banner" hidden></p>
     <div id="status" class="status-banner" hidden></div>
 
     <main id="main-content" hidden>
@@ -110,8 +111,8 @@
           <p class="hint">Visibility predictor — recent swell and rain often precede murkier water.</p>
         </div>
         <div class="chart-card">
-          <h4>SWELL HEIGHT</h4>
-          <div class="chart-title">Swell (ft) — hourly tail of this fetch</div>
+          <h4>SWELL / SEAS</h4>
+          <div class="chart-title">Swell or combined seas (ft) — last 48 hours</div>
           <svg class="chart-svg" id="chart-swell" viewBox="0 0 360 88" preserveAspectRatio="none"></svg>
         </div>
         <div class="chart-card" style="margin-top: 0.65rem">
@@ -150,6 +151,6 @@
     </button>
   </nav>
 
-  <script src="js/shorecast.js?v=8" defer></script>
+  <script src="js/shorecast.js?v=9" defer></script>
 </body>
 </html>
