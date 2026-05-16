@@ -236,6 +236,103 @@ function buildMarineParams(lat, lon, tz) {
   return `${MARINE_URL}?${p}`;
 }
 
+/** How many of the first ~72 marine hours have swell or combined wave height. */
+function marineWaveCoverage(marine) {
+  const swell = marine?.hourly?.swell_wave_height ?? [];
+  const wave = marine?.hourly?.wave_height ?? [];
+  const n = Math.min(Math.max(swell.length, wave.length), 72);
+  let hits = 0;
+  for (let i = 0; i < n; i++) {
+    if (swell[i] != null || wave[i] != null) hits++;
+  }
+  return hits;
+}
+
+/** Beach pins often land on land in the marine grid (all null). Try nearby points in parallel. */
+async function fetchMarineBest(lat, lon, tz) {
+  const deltas = [
+    [0, 0],
+    [0.06, 0],
+    [-0.06, 0],
+    [0, 0.06],
+    [0, -0.06],
+    [0.06, 0.06],
+    [0.06, -0.06],
+    [-0.06, 0.06],
+    [-0.06, -0.06],
+    [0.12, 0],
+    [0, 0.12],
+  ];
+  const results = await Promise.all(
+    deltas.map(async ([dlat, dlon]) => {
+      try {
+        return { marine: await fetchJson(buildMarineParams(lat + dlat, lon + dlon, tz)), dlat, dlon };
+      } catch {
+        return null;
+      }
+    })
+  );
+  let best = results.find((r) => r && r.dlat === 0 && r.dlon === 0)?.marine ?? results[0]?.marine;
+  let bestScore = best ? marineWaveCoverage(best) : 0;
+  let pick = results.find((r) => r && r.dlat === 0 && r.dlon === 0) ?? results[0];
+  for (const row of results) {
+    if (!row?.marine) continue;
+    const score = marineWaveCoverage(row.marine);
+    if (score > bestScore) {
+      bestScore = score;
+      best = row.marine;
+      pick = row;
+    }
+  }
+  let note = "";
+  if (bestScore < 12) {
+    note =
+      "Wave and swell heights are unavailable near this pin in the Open-Meteo marine grid. Wind and tides still apply — check a local buoy or surf forecast.";
+  } else if (pick && (pick.dlat !== 0 || pick.dlon !== 0)) {
+    const distMi = Math.hypot(pick.dlat * 69, pick.dlon * 69 * Math.cos((lat * Math.PI) / 180));
+    note = `Swell and seas use the nearest offshore model cell (~${Math.max(1, Math.round(distMi))} mi from your pin). Onshore coordinates often have no wave data in this model.`;
+  }
+  if (!best) {
+    return {
+      marine: { hourly: { time: [], swell_wave_height: [], wave_height: [], wind_wave_height: [] } },
+      note:
+        "Wave and swell heights are unavailable near this pin in the Open-Meteo marine grid. Wind and tides still apply — check a local buoy or surf forecast.",
+    };
+  }
+  return { marine: best, note };
+}
+
+/** Prefer swell height; fall back to combined significant wave height (seas). */
+function rowWaveFt(r) {
+  if (r.swell_m != null && !Number.isNaN(r.swell_m)) return { ft: r.swell_m * M_TO_FT, kind: "swell" };
+  if (r.wave_m != null && !Number.isNaN(r.wave_m)) return { ft: r.wave_m * M_TO_FT, kind: "seas" };
+  return null;
+}
+
+function displayWaveForOutlook(stats) {
+  if (stats.swellMaxFt != null) {
+    return { label: "Swell", ft: stats.swellMaxFt, period: stats.swellMinS };
+  }
+  if (stats.seasMaxFt != null) {
+    return { label: "Seas", ft: stats.seasMaxFt, period: stats.swellMinS };
+  }
+  return { label: "Swell", ft: null, period: null };
+}
+
+function formatWaveOutlookLine(stats) {
+  const w = displayWaveForOutlook(stats);
+  if (w.ft == null) return "Waves —";
+  const per = w.period != null ? ` · ${w.period.toFixed(0)}s` : "";
+  return `${w.label} ${w.ft.toFixed(1)}ft${per}`;
+}
+
+function formatWaveStatLine(stats) {
+  const w = displayWaveForOutlook(stats);
+  if (w.ft == null) return "—";
+  const per = w.period != null ? `${w.period.toFixed(0)}s` : "—";
+  return `${w.ft.toFixed(1)} ft · ${per}`;
+}
+
 function buildWeatherParams(lat, lon, tz) {
   const h = [
     "temperature_2m",
@@ -326,10 +423,11 @@ function aggregateStats(dayRows) {
   return {
     windMaxKn: maxOf((r) => r.wind_kn),
     windGustMaxKn: maxOf((r) => r.gust_kn),
-    swellMaxFt: maxOf((r) => (r.swell_m ?? 0) * M_TO_FT),
+    swellMaxFt: maxOf((r) => (r.swell_m != null ? r.swell_m * M_TO_FT : null)),
     swellMinS: minOf((r) => r.swell_s),
+    seasMaxFt: maxOf((r) => (r.wave_m != null ? r.wave_m * M_TO_FT : null)),
     waveMaxM: maxOf((r) => r.wave_m),
-    windWaveMaxFt: maxOf((r) => (r.wind_wave_m ?? 0) * M_TO_FT),
+    windWaveMaxFt: maxOf((r) => (r.wind_wave_m != null ? r.wind_wave_m * M_TO_FT : null)),
     visMinMi: minOf((r) => (r.vis_m ?? 0) * M_TO_MI),
     airTempAvgF: avgOf((r) => cToF(r.temp_c)),
     sstAvgF: avgOf((r) => cToF(r.sst_c)),
@@ -362,7 +460,8 @@ function waterProxyScoreForDay(rows, dayKey) {
     const k = dateKeyFromApiLocal(r.time);
     if (!windowKeys.has(k)) continue;
     rainMm += Math.max(0, r.precip_mm ?? 0);
-    maxS = Math.max(maxS, (r.swell_m ?? 0) * M_TO_FT);
+    const wft = rowWaveFt(r);
+    if (wft) maxS = Math.max(maxS, wft.ft);
   }
   const rainIn = rainMm / 25.4;
   let score = 100;
@@ -375,7 +474,10 @@ function breakdownForDay(stats, rows, dayKey) {
   const wp = waterProxyScoreForDay(rows, dayKey);
 
   const wWind = scoreWindKn(stats.windMaxKn);
-  const wSwellH = scoreSwellFt(stats.swellMaxFt);
+  const primaryWaveFt = stats.swellMaxFt ?? stats.seasMaxFt;
+  const usingSeasFallback = stats.swellMaxFt == null && stats.seasMaxFt != null;
+
+  const wSwellH = scoreSwellFt(primaryWaveFt);
   const wSwellP = scorePeriod(stats.swellMinS);
   const wWave = scoreWaveM(stats.waveMaxM);
   const wWw = scoreSwellFt(stats.windWaveMaxFt);
@@ -395,9 +497,15 @@ function breakdownForDay(stats, rows, dayKey) {
     wSea * WEIGHTS.seaTemp;
 
   const windKn = stats.windMaxKn ?? 0;
-  const swellFt = stats.swellMaxFt ?? 0;
+  const swellFt = primaryWaveFt ?? 0;
   const swellS = stats.swellMinS ?? 0;
   const wavePowerApprox = (stats.waveMaxM ?? 0) * (stats.waveMaxM ?? 0) / Math.max(swellS, 1);
+  const swellValueStr = primaryWaveFt != null ? `${primaryWaveFt.toFixed(1)} ft` : "—";
+  const swellNote = usingSeasFallback
+    ? "Open-Meteo did not resolve swell at this grid; showing combined seas (significant wave height) instead."
+    : swellFt <= 1.5
+      ? "Small swell = gentler surf zone."
+      : "Larger swell — use caution at entry.";
 
   return {
     overall: Math.round(clamp(total, 0, 100)),
@@ -415,22 +523,27 @@ function breakdownForDay(stats, rows, dayKey) {
       },
       {
         id: "swell",
-        name: "Swell Size",
-        value: `${swellFt.toFixed(1)} ft`,
+        name: usingSeasFallback ? "Seas (Combined)" : "Swell Size",
+        value: swellValueStr,
         score: Math.round(wSwellH),
         weightPct: Math.round(WEIGHTS.swellH * 100),
-        note: swellFt <= 1.5 ? "Small swell = gentler surf zone." : "Larger swell — use caution at entry.",
-        warn: swellFt > 2,
+        note: swellNote,
+        warn: primaryWaveFt != null && primaryWaveFt > 2,
         why: "Uses the maximum swell height (ft) in that daytime window. Tiny swell scores near 100; scores fall as swell grows, with stronger penalties past ~1.5–2 ft for shore entries.",
       },
       {
         id: "period",
         name: "Swell Period",
-        value: `${swellS.toFixed(1)} s`,
+        value: stats.swellMinS != null ? `${swellS.toFixed(1)} s` : "—",
         score: Math.round(wSwellP),
         weightPct: Math.round(WEIGHTS.swellP * 100),
-        note: swellS >= 10 ? "Longer period = cleaner sets." : "Short period can mean confused chop.",
-        warn: swellS < 8,
+        note:
+          stats.swellMinS != null
+            ? swellS >= 10
+              ? "Longer period = cleaner sets."
+              : "Short period can mean confused chop."
+            : "Swell period not available when only combined seas are reported.",
+        warn: stats.swellMinS != null && swellS < 8,
         why: "Uses the shortest swell period in the window (chop proxy). Longer periods (about 10–14+ s) score higher; under ~8 s is flagged because energy arrives in shorter, messier intervals.",
       },
       {
@@ -446,11 +559,16 @@ function breakdownForDay(stats, rows, dayKey) {
       {
         id: "ww",
         name: "Wind Waves",
-        value: `${(stats.windWaveMaxFt ?? 0).toFixed(1)} ft`,
+        value: stats.windWaveMaxFt != null ? `${stats.windWaveMaxFt.toFixed(1)} ft` : "—",
         score: Math.round(wWw),
         weightPct: Math.round(WEIGHTS.windWave * 100),
-        note: (stats.windWaveMaxFt ?? 0) < 0.5 ? "Mostly glassy wind sea." : "Wind-driven chop possible.",
-        warn: (stats.windWaveMaxFt ?? 0) > 1,
+        note:
+          stats.windWaveMaxFt == null
+            ? "Wind-sea height not reported for this window."
+            : stats.windWaveMaxFt < 0.5
+              ? "Mostly glassy wind sea."
+              : "Wind-driven chop possible.",
+        warn: stats.windWaveMaxFt != null && stats.windWaveMaxFt > 1,
         why: "Max wind-sea height in the window. Low wind waves score high; above ~1 ft the score drops and the flag warns of wind-driven chop on top of any swell.",
       },
       {
@@ -524,6 +642,7 @@ function init() {
     dayGrid: document.getElementById("day-grid"),
     main: document.getElementById("main-content"),
     status: document.getElementById("status"),
+    marineBanner: document.getElementById("marine-banner"),
     donutFg: document.querySelector(".donut-fg"),
     donutNum: document.getElementById("donut-num"),
     detailLoc: document.getElementById("detail-loc"),
@@ -892,11 +1011,21 @@ function init() {
     }
 
     try {
-      const [marine, weather, tideResult] = await Promise.all([
-        fetchJson(buildMarineParams(lat, lon, tz)),
+      const [marineResult, weather, tideResult] = await Promise.all([
+        fetchMarineBest(lat, lon, tz),
         fetchJson(buildWeatherParams(lat, lon, tz)),
         safeTides(),
       ]);
+      const marine = marineResult.marine;
+      if (el.marineBanner) {
+        if (marineResult.note) {
+          el.marineBanner.hidden = false;
+          el.marineBanner.textContent = marineResult.note;
+        } else {
+          el.marineBanner.hidden = true;
+          el.marineBanner.textContent = "";
+        }
+      }
       tideState =
         tideResult.mode === "ok"
           ? { mode: "ok", preds: tideResult.preds, stationId: currentNoaaId }
@@ -934,8 +1063,7 @@ function init() {
           if (!d.stats) return "";
           const bestMark = best && d.key === best.key && best.overall >= 70 ? `<span class="badge-best">Best</span>` : "";
           const wind = d.stats.windMaxKn ?? 0;
-          const swell = d.stats.swellMaxFt ?? 0;
-          const per = d.stats.swellMinS ?? 0;
+          const waveLine = formatWaveOutlookLine(d.stats);
           const lab = formatDayLabel(d.key, today, idx);
           const selClass = d.key === selectedKey ? "selected" : "";
           const tideMini = tideMiniForDayKey(d.key);
@@ -945,7 +1073,7 @@ function init() {
             <div class="date-line">${escapeHtml(lab)}</div>
             <div class="score-big">${d.overall} <span style="font-size:0.55em;font-weight:700;color:#5a7285">/ 100</span></div>
             <div class="rating">${escapeHtml(labelForScore(d.overall))}</div>
-            <div class="mini">Wind ${wind.toFixed(0)}kt · Swell ${swell.toFixed(1)}ft · ${per.toFixed(0)}s</div>
+            <div class="mini">Wind ${wind.toFixed(0)}kt · ${escapeHtml(waveLine)}</div>
             ${tideRow}
           </button>`;
         })
@@ -965,6 +1093,7 @@ function init() {
       el.main.hidden = false;
     } catch (e) {
       console.error(e);
+      if (el.marineBanner) el.marineBanner.hidden = true;
       if (el.dataFresh) el.dataFresh.textContent = "";
       setStatus(e.message || "Could not load forecast.", true);
     }
@@ -987,7 +1116,7 @@ function init() {
     el.pillStatus.className = "pill-status " + ratingClass(bd.overall);
 
     el.statWind.textContent = `${(stats.windMaxKn ?? 0).toFixed(0)} kn ${degToCompass(stats.windDirAtMax)}`;
-    el.statSwell.textContent = `${(stats.swellMaxFt ?? 0).toFixed(1)} ft ${(stats.swellMinS ?? 0).toFixed(0)}s`;
+    el.statSwell.textContent = formatWaveStatLine(stats);
     const air = stats.airTempAvgF != null ? stats.airTempAvgF.toFixed(0) : "—";
     const sea = stats.sstAvgF != null ? stats.sstAvgF.toFixed(0) : "—";
     el.statTemp.textContent = `${air}° / ${sea}° F`;
@@ -1027,9 +1156,11 @@ function init() {
         const tf = cToF(r.temp_c);
         const temp = tf != null ? `${tf.toFixed(0)}°` : "—";
         const w = r.wind_kn ?? 0;
-        const sf = (r.swell_m ?? 0) * M_TO_FT;
-        const ss = r.swell_s ?? 0;
-        return `<div class="hour-col"><div class="t">${tlab}</div><div class="temp">${temp}</div><div class="row">${w.toFixed(0)} ${degToCompass(r.wind_dir)}</div><div class="row">${sf.toFixed(1)}ft ${ss.toFixed(0)}s</div></div>`;
+        const wv = rowWaveFt(r);
+        const wvTxt = wv
+          ? `${wv.ft.toFixed(1)}ft ${r.swell_s != null ? `${r.swell_s.toFixed(0)}s` : wv.kind === "seas" ? "seas" : "—"}`
+          : "—";
+        return `<div class="hour-col"><div class="t">${tlab}</div><div class="temp">${temp}</div><div class="row">${w.toFixed(0)} ${degToCompass(r.wind_dir)}</div><div class="row">${wvTxt}</div></div>`;
       })
       .join("");
   }
@@ -1042,10 +1173,20 @@ function init() {
       return;
     }
 
-    const swellFt = slice.map((r) => (r.swell_m ?? 0) * M_TO_FT);
+    const swellFt = slice.map((r) => {
+      const w = rowWaveFt(r);
+      return w ? w.ft : null;
+    });
+    const swellFtNums = swellFt.filter((v) => v != null);
+    if (swellFtNums.length < 2) {
+      el.chartSwell.innerHTML = '<text x="4" y="44" font-size="10" fill="#5a7285">No wave height data in this window.</text>';
+      el.chartRain.innerHTML = "";
+      return;
+    }
+    const swellFtPlot = swellFt.map((v) => v ?? 0);
     const rainIn = slice.map((r) => ((r.precip_mm ?? 0) / 25.4));
 
-    drawLineChart(el.chartSwell, swellFt, "#1e6bb8", "ft");
+    drawLineChart(el.chartSwell, swellFtPlot, "#1e6bb8", "ft");
     drawLineChart(el.chartRain, rainIn, "#0d8a5b", "in/hr");
   }
 

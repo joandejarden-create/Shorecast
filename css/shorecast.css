@@ -183,6 +183,17 @@ body {
   background: #e4f0fa;
 }
 
+.marine-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: #eef6fc;
+  border: 1px solid #b8d4e8;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #1a4a6e;
+}
+
 .factor--ref .meta {
   font-size: 0.72rem;
   text-align: right;
