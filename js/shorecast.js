@@ -329,16 +329,29 @@ function displayWaveForOutlook(stats) {
   return { label: "Swell", ft: null, period: null, kind: null };
 }
 
-/** Period first: “8s · 1.2ft · long spacing”. */
-function formatWaveOutlookLine(stats) {
+function toProperCase(str) {
+  return String(str).replace(/\b\w+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+/** Top row: period · height; bottom row: spacing label (Proper Case). */
+function waveOutlookCardHtml(stats) {
   const w = displayWaveForOutlook(stats);
-  if (w.ft == null) return "Waves —";
-  const sp = spacingFromPeriod(w.period);
-  if (w.period != null) {
-    const tail = sp ? ` · ${sp.label.toLowerCase()}` : "";
-    return `${w.period.toFixed(0)}s · ${w.ft.toFixed(1)}ft${tail}`;
+  if (w.ft == null) {
+    return `<div class="day-card-wave"><div class="day-card-wave-primary">Waves —</div></div>`;
   }
-  return `${w.label} ${w.ft.toFixed(1)}ft`;
+  const sp = spacingFromPeriod(w.period);
+  const primary =
+    w.period != null
+      ? `${w.period.toFixed(0)}s · ${w.ft.toFixed(1)}ft`
+      : `${w.label} ${w.ft.toFixed(1)}ft`;
+  const spacing = sp ? toProperCase(sp.label) : "";
+  if (!spacing) {
+    return `<div class="day-card-wave"><div class="day-card-wave-primary">${escapeHtml(primary)}</div></div>`;
+  }
+  return `<div class="day-card-wave">
+    <div class="day-card-wave-primary">${escapeHtml(primary)}</div>
+    <div class="day-card-wave-spacing">${escapeHtml(spacing)}</div>
+  </div>`;
 }
 
 function formatWaveStatLine(stats) {
@@ -1099,7 +1112,7 @@ function init() {
           if (!d.stats) return "";
           const bestMark = best && d.key === best.key && best.overall >= 70 ? `<span class="badge-best">Best</span>` : "";
           const wind = d.stats.windMaxKn ?? 0;
-          const waveLine = formatWaveOutlookLine(d.stats);
+          const waveBlock = waveOutlookCardHtml(d.stats);
           const lab = formatDayLabel(d.key, today, idx);
           const selClass = d.key === selectedKey ? "selected" : "";
           const tideMini = tideMiniForDayKey(d.key);
@@ -1108,7 +1121,7 @@ function init() {
             ${bestMark}
             <div class="day-card-head">
               <div class="date-line">${escapeHtml(lab)}</div>
-              <div class="day-card-wave">${escapeHtml(waveLine)}</div>
+              ${waveBlock}
             </div>
             <div class="score-big">${d.overall} <span style="font-size:0.55em;font-weight:700;color:#5a7285">/ 100</span></div>
             <div class="rating">${escapeHtml(labelForScore(d.overall))}</div>

@@ -420,13 +420,27 @@ section {
 }
 
 .day-card-wave {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.12rem;
+  flex-shrink: 0;
+  max-width: 55%;
+  text-align: right;
+}
+
+.day-card-wave-primary {
   font-size: 0.64rem;
   font-weight: 600;
   color: #4a6575;
-  line-height: 1.35;
-  text-align: right;
-  flex-shrink: 0;
-  max-width: 55%;
+  line-height: 1.25;
+}
+
+.day-card-wave-spacing {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #5a7285;
+  line-height: 1.2;
 }
 
 .day-card .score-big {
