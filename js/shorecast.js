@@ -499,6 +499,159 @@ function aggregateStats(dayRows) {
   };
 }
 
+function predTimeMs(tStr) {
+  const m = String(tStr).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return 0;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+}
+
+/** Interpolate NOAA hilo curve; rate in ft/hr at mid-hour. */
+function tideContextForHour(preds, dayKey, hour) {
+  if (!preds?.length) return null;
+  const tMs = predTimeMs(`${dayKey} ${String(hour).padStart(2, "0")}:30`);
+  const sorted = [...preds].sort((a, b) => predTimeMs(a.t) - predTimeMs(b.t));
+  let prev = sorted[0];
+  let next = sorted[sorted.length - 1];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const ta = predTimeMs(sorted[i].t);
+    const tb = predTimeMs(sorted[i + 1].t);
+    if (ta <= tMs && tMs <= tb) {
+      prev = sorted[i];
+      next = sorted[i + 1];
+      break;
+    }
+  }
+  const t0 = predTimeMs(prev.t);
+  const t1 = predTimeMs(next.t);
+  const h0 = Number.parseFloat(prev.v);
+  const h1 = Number.parseFloat(next.v);
+  if (!Number.isFinite(h0) || !Number.isFinite(h1) || t1 <= t0) return { score: 70, phrase: null };
+  const hoursSpan = (t1 - t0) / 3600000;
+  const rate = hoursSpan > 0 ? (h1 - h0) / hoursSpan : 0;
+  const abs = Math.abs(rate);
+  let score = 80;
+  let phrase = null;
+  if (abs < 0.25) {
+    score = 92;
+    phrase = "near slack";
+  } else if (rate > 0.25 && rate < 1.0) {
+    score = 88;
+    phrase = "rising tide";
+  } else if (rate < -0.25 && rate > -1.0) {
+    score = 72;
+    phrase = "falling tide";
+  } else if (abs >= 1.0) {
+    score = 45;
+    phrase = "strong tidal movement";
+  } else if (rate > 0) {
+    score = 85;
+    phrase = "rising tide";
+  } else {
+    score = 70;
+    phrase = "falling tide";
+  }
+  return { score, phrase, rate };
+}
+
+function scoreHourEntry(row, preds, dayKey) {
+  const hour = hourFromApiLocal(row.time);
+  const wv = rowWaveFt(row);
+  const wind = scoreWindKn(row.wind_kn);
+  const swellH = scoreSwellFt(wv?.ft ?? null);
+  const periodSc = scorePeriod(row.swell_s);
+  const tide = tideContextForHour(preds, dayKey, hour);
+  let total = wind * 0.38 + swellH * 0.32 + periodSc * 0.28;
+  if (tide) total = total * 0.88 + tide.score * 0.12;
+  return total;
+}
+
+function windPhraseShort(maxKn) {
+  if (maxKn <= 10) return "light wind";
+  if (maxKn <= 15) return "moderate wind";
+  return "strong wind";
+}
+
+function spacingPhraseShort(sec) {
+  const sp = spacingFromPeriod(sec);
+  if (!sp) return null;
+  if (sp.short === "stacked") return "stacked / chop";
+  return `${sp.short} spacing`;
+}
+
+function formatHourRangeLabel(startHour, length) {
+  const endHour = startHour + length - 1;
+  const fmt = (h) => {
+    const ap = h >= 12 ? "pm" : "am";
+    return `${h % 12 || 12}${ap}`;
+  };
+  if (startHour === endHour) return fmt(startHour);
+  const startAp = startHour >= 12 ? "pm" : "am";
+  const endAp = endHour >= 12 ? "pm" : "am";
+  const s12 = startHour % 12 || 12;
+  const e12 = endHour % 12 || 12;
+  if (startAp === endAp) return `${s12}–${e12}${startAp}`;
+  return `${fmt(startHour)}–${fmt(endHour)}`;
+}
+
+function buildEntryWindowSummary(slice, preds, dayKey) {
+  const rows = slice.map((s) => s.row);
+  const maxWind = Math.max(...rows.map((r) => r.wind_kn ?? 0));
+  const periods = rows.map((r) => r.swell_s).filter((p) => p != null && !Number.isNaN(p));
+  const minPeriod = periods.length ? Math.min(...periods) : null;
+  const midHour = slice[Math.floor(slice.length / 2)].hour;
+  const tide = tideContextForHour(preds, dayKey, midHour);
+  const parts = [windPhraseShort(maxWind)];
+  const sp = spacingPhraseShort(minPeriod);
+  if (sp) parts.push(sp);
+  if (tide?.phrase) parts.push(tide.phrase);
+  return parts.join(", ");
+}
+
+/** Best 2–3 h block in 7am–6pm window (wind, swell spacing, tide). */
+function findBestEntryWindow(rows, dayKey, preds) {
+  const dayRows = rows
+    .filter((r) => dateKeyFromApiLocal(r.time) === dayKey && isEntryWindow(r.time))
+    .sort((a, b) => a.time.localeCompare(b.time));
+  if (dayRows.length < 2) return null;
+
+  const hourSlots = dayRows.map((row) => ({
+    hour: hourFromApiLocal(row.time),
+    row,
+    score: scoreHourEntry(row, preds, dayKey),
+  }));
+
+  let best = null;
+  for (const len of [3, 2]) {
+    for (let i = 0; i <= hourSlots.length - len; i++) {
+      const slice = hourSlots.slice(i, i + len);
+      let consecutive = true;
+      for (let j = 1; j < slice.length; j++) {
+        if (slice[j].hour !== slice[j - 1].hour + 1) {
+          consecutive = false;
+          break;
+        }
+      }
+      if (!consecutive) continue;
+      const avg = slice.reduce((s, x) => s + x.score, 0) / len;
+      if (!best || avg > best.avg + 0.4 || (Math.abs(avg - best.avg) <= 0.4 && len > best.length)) {
+        best = { avg, length: len, startHour: slice[0].hour, slice };
+      }
+    }
+  }
+  if (!best) return null;
+  return {
+    startHour: best.startHour,
+    length: best.length,
+    hours: best.slice.map((s) => s.hour),
+    summary: buildEntryWindowSummary(best.slice, preds, dayKey),
+  };
+}
+
+function formatEntryWindowLine(entry) {
+  if (!entry) return "";
+  return `Best entry: ${formatHourRangeLabel(entry.startHour, entry.length)} — ${entry.summary}`;
+}
+
 /** Rain + swell heuristic for calendar days up to and including `dayKey` (string YYYY-MM-DD). */
 function waterProxyScoreForDay(rows, dayKey) {
   const sortedKeys = [...new Set(rows.map((r) => dateKeyFromApiLocal(r.time)))].sort();
@@ -704,6 +857,7 @@ function init() {
     donutNum: document.getElementById("donut-num"),
     detailLoc: document.getElementById("detail-loc"),
     pillStatus: document.getElementById("pill-status"),
+    entryWindow: document.getElementById("entry-window"),
     statWind: document.getElementById("stat-wind"),
     statSwell: document.getElementById("stat-swell"),
     statTemp: document.getElementById("stat-temp"),
@@ -1097,11 +1251,13 @@ function init() {
         selectedKey = dayKeys[0] || allKeys[0];
       }
 
+      const tidePreds = tideState.mode === "ok" ? tideState.preds : null;
       const scored = dayKeys.map((k) => {
         const stats = aggregateDay(merged, k);
-        if (!stats) return { key: k, overall: 0, stats: null };
+        if (!stats) return { key: k, overall: 0, stats: null, entry: null };
         const bd = breakdownForDay(stats, merged, k);
-        return { key: k, overall: bd.overall, stats, bd };
+        const entry = findBestEntryWindow(merged, k, tidePreds);
+        return { key: k, overall: bd.overall, stats, bd, entry };
       });
 
       const scoredValid = scored.filter((d) => d.stats);
@@ -1117,6 +1273,11 @@ function init() {
           const selClass = d.key === selectedKey ? "selected" : "";
           const tideMini = tideMiniForDayKey(d.key);
           const tideRow = tideMini ? `<div class="mini mini-tide">${escapeHtml(tideMini)}</div>` : "";
+          const entryLine = d.entry ? formatEntryWindowLine(d.entry) : "";
+          const entryRow = entryLine
+            ? `<div class="mini entry-window-line"><strong>${escapeHtml(entryLine)}</strong></div>`
+            : "";
+
           return `<button type="button" class="day-card ${selClass}" data-key="${d.key}">
             ${bestMark}
             <div class="day-card-head">
@@ -1125,6 +1286,7 @@ function init() {
             </div>
             <div class="score-big">${d.overall} <span style="font-size:0.55em;font-weight:700;color:#5a7285">/ 100</span></div>
             <div class="rating">${escapeHtml(labelForScore(d.overall))}</div>
+            ${entryRow}
             <div class="mini">Wind ${wind.toFixed(0)}kt</div>
             ${tideRow}
           </button>`;
@@ -1167,6 +1329,17 @@ function init() {
     el.pillStatus.textContent = `${labelForScore(bd.overall)} for shore diving`;
     el.pillStatus.className = "pill-status " + ratingClass(bd.overall);
 
+    if (el.entryWindow) {
+      const entryLine = day.entry ? formatEntryWindowLine(day.entry) : "";
+      if (entryLine) {
+        el.entryWindow.hidden = false;
+        el.entryWindow.innerHTML = "<strong>" + escapeHtml(entryLine) + "</strong>";
+      } else {
+        el.entryWindow.hidden = true;
+        el.entryWindow.textContent = "";
+      }
+    }
+
     el.statWind.textContent = `${(stats.windMaxKn ?? 0).toFixed(0)} kn ${degToCompass(stats.windDirAtMax)}`;
     el.statSwell.textContent = formatWaveStatLine(stats);
     const air = stats.airTempAvgF != null ? stats.airTempAvgF.toFixed(0) : "—";
@@ -1199,6 +1372,7 @@ function init() {
     el.hourlyTitle.textContent = `Hourly — ${wday}, ${mon} ${d}`;
 
     const hours = merged.filter((r) => dateKeyFromApiLocal(r.time) === selectedKey).sort((a, b) => a.time.localeCompare(b.time));
+    const entryHours = day.entry?.hours ? new Set(day.entry.hours) : null;
     el.hourStrip.innerHTML = hours
       .map((r) => {
         const h = hourFromApiLocal(r.time);
@@ -1214,7 +1388,8 @@ function init() {
             ? `${r.swell_s.toFixed(0)}s · ${wv.ft.toFixed(1)}ft`
             : `${wv.ft.toFixed(1)}ft seas`
           : "—";
-        return `<div class="hour-col"><div class="t">${tlab}</div><div class="temp">${temp}</div><div class="row">${w.toFixed(0)} ${degToCompass(r.wind_dir)}</div><div class="row">${wvTxt}</div></div>`;
+        const inEntry = entryHours && entryHours.has(h);
+        return `<div class="hour-col${inEntry ? " hour-col--entry" : ""}"><div class="t">${tlab}</div><div class="temp">${temp}</div><div class="row">${w.toFixed(0)} ${degToCompass(r.wind_dir)}</div><div class="row">${wvTxt}</div></div>`;
       })
       .join("");
   }
