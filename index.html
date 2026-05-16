@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Shorecast — shore diving conditions</title>
-  <link rel="stylesheet" href="css/shorecast.css?v=14" />
+  <link rel="stylesheet" href="css/shorecast.css?v=15" />
 </head>
 <body>
   <div id="shorecast-root" class="app">
@@ -53,7 +53,7 @@
       <section aria-labelledby="outlook-h">
         <div class="section-head">
           <h3 id="outlook-h">7-Day Outlook</h3>
-          <p class="hint">Tap a day for detail. Wave line is <strong>period · height · spacing</strong> (e.g. 10s · 1.2ft · long spacing). Saved spots include NOAA tides.</p>
+          <p class="hint">Tap a day for detail. Each card shows a <strong>best entry</strong> window (2–3 h) for wind, swell spacing, and tide. Saved spots include NOAA tides.</p>
         </div>
         <div class="day-grid" id="day-grid"></div>
       </section>
@@ -76,6 +76,7 @@
           <p class="detail-kicker">SHORE DIVE CONDITIONS</p>
           <p class="detail-loc" id="detail-loc">—</p>
           <p class="pill-status" id="pill-status">—</p>
+          <p class="entry-window-banner" id="entry-window" hidden></p>
           <div class="stat-grid">
             <div class="stat-cell">
               <div class="lbl">WIND</div>
@@ -151,6 +152,6 @@
     </button>
   </nav>
 
-  <script src="js/shorecast.js?v=14" defer></script>
+  <script src="js/shorecast.js?v=15" defer></script>
 </body>
 </html>

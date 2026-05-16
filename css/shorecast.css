@@ -463,6 +463,19 @@ section {
   line-height: 1.35;
 }
 
+.day-card .entry-window-line {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.6rem;
+  line-height: 1.4;
+  color: #2d5a72;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.day-card .entry-window-line strong {
+  font-weight: 700;
+}
+
 .day-card .mini-tide {
   margin-top: 0.2rem;
   font-size: 0.6rem;
@@ -566,7 +579,19 @@ section {
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 700;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.entry-window-banner {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #2d5a72;
+  margin: 0 0 1rem;
+  padding: 0 0.5rem;
+}
+
+.entry-window-banner strong {
+  font-weight: 700;
 }
 
 .pill-status.fair {
@@ -737,6 +762,12 @@ section {
   display: flex;
   gap: 0.5rem;
   padding-bottom: 0.25rem;
+}
+
+.hour-col--entry {
+  background: #e8f4fc;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px #9ec8e8;
 }
 
 .hour-col {
